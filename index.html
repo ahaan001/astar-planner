@@ -1,0 +1,1792 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A* Planner</title>
+<meta name="description" content="Grade tracker and A* planner: subjects, weighted assessments, grade boundaries, upcoming tests, required scores, predictions and calendar.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Figtree:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: fixed sidebar on desktop, top bar + bottom tab bar on phones; content column of cards. */
+:root {
+  --bg: #f3f6fb; --surface: #ffffff; --surface-2: #eaf0f9; --surface-3: #dfe7f4;
+  --border: #e3e9f3; --fg: #0f1a2e; --muted: #5a6b86; --faint: #8b99b2;
+  --primary: #2457e6; --primary-strong: #1a45bd; --primary-soft: #e3ebff; --primary-fg: #ffffff;
+  --good: #148a58; --good-soft: #dcf5e8; --warn: #b96f00; --warn-soft: #fff0d3; --bad: #cf2f3a; --bad-soft: #fde2e4;
+  --shadow: 0 1px 2px rgba(15, 26, 46, .05), 0 6px 20px -8px rgba(15, 26, 46, .12);
+  --display: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+  --body: 'Figtree', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'DM Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --radius: 16px; --radius-s: 10px;
+  --nav-h: 64px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1120; --surface: #121a2b; --surface-2: #192338; --surface-3: #212d46;
+    --border: #273450; --fg: #eaf0fa; --muted: #9aa9c4; --faint: #6d7c98;
+    --primary: #5d8dff; --primary-strong: #82a8ff; --primary-soft: #1a2a4f; --primary-fg: #071026;
+    --good: #3ecf8c; --good-soft: #10301f; --warn: #f2b74f; --warn-soft: #3a2a0e; --bad: #ff6e76; --bad-soft: #3d151a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -10px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1120; --surface: #121a2b; --surface-2: #192338; --surface-3: #212d46;
+  --border: #273450; --fg: #eaf0fa; --muted: #9aa9c4; --faint: #6d7c98;
+  --primary: #5d8dff; --primary-strong: #82a8ff; --primary-soft: #1a2a4f; --primary-fg: #071026;
+  --good: #3ecf8c; --good-soft: #10301f; --warn: #f2b74f; --warn-soft: #3a2a0e; --bad: #ff6e76; --bad-soft: #3d151a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -10px rgba(0, 0, 0, .5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, h4 { font-family: var(--display); margin: 0; line-height: 1.2; text-wrap: balance; font-weight: 600; }
+h1 { font-size: 1.75rem; } h2 { font-size: 1.25rem; } h3 { font-size: 1.05rem; } h4 { font-size: .95rem; }
+p { margin: 0; }
+a { color: var(--primary); }
+button { font: inherit; color: inherit; }
+input, select, textarea { font: inherit; color: inherit; }
+.num, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tnum { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.small { font-size: .85rem; }
+.xs { font-size: .78rem; }
+.strong { font-weight: 600; }
+.hidden { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* App frame */
+#app { min-height: 100%; }
+.frame { display: grid; grid-template-columns: 248px 1fr; min-height: 100%; }
+.sidebar { position: sticky; top: env(safe-area-inset-top, 0px); height: 100vh; background: var(--surface); border-right: 1px solid var(--border); padding: 22px 16px; display: flex; flex-direction: column; gap: 6px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
+.brand .logo { width: 36px; height: 36px; border-radius: 11px; background: var(--primary); color: var(--primary-fg); display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 1.1rem; }
+.brand .name { font-family: var(--display); font-weight: 700; font-size: 1.15rem; letter-spacing: -.01em; }
+.brand .sub { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius-s); border: 0; background: transparent; cursor: pointer; text-align: left; color: var(--muted); font-weight: 500; width: 100%; transition: background .15s, color .15s; }
+.nav-item svg { width: 20px; height: 20px; flex: none; }
+.nav-item:hover { background: var(--surface-2); color: var(--fg); }
+.nav-item.active { background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; }
+.sidebar .spacer { flex: 1; }
+.side-foot { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.overall-mini { padding: 12px; border-radius: var(--radius-s); background: var(--surface-2); }
+.overall-mini .v { font-family: var(--display); font-size: 1.5rem; font-weight: 700; }
+
+.main { min-width: 0; padding-block: 28px 40px; padding-inline: clamp(16px, 3vw, 40px); }
+.content { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+
+.topbar, .bottomnav { display: none; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; font-size: .9rem; line-height: 1.2; transition: background .15s, border-color .15s, transform .05s; white-space: nowrap; }
+.btn:hover { background: var(--surface-2); }
+.btn:active { transform: translateY(1px); }
+.btn svg { width: 16px; height: 16px; }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+.btn.primary:hover { background: var(--primary-strong); border-color: var(--primary-strong); }
+.btn.danger { color: var(--bad); }
+.btn.danger:hover { background: var(--bad-soft); border-color: var(--bad-soft); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--surface-2); }
+.btn.sm { padding: 6px 10px; font-size: .82rem; }
+.btn.icon { padding: 7px; }
+.btn.icon svg { width: 18px; height: 18px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: .85rem; color: var(--muted); }
+.seg button.active { background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
+
+/* Cards & sections */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; }
+.card.soft { background: var(--surface-2); border: 0; }
+.card.pad-s { padding: 16px; }
+.card.clickable { cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s; }
+.card.clickable:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--surface-3); }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.page-head .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.eyebrow { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; }
+.grid { display: grid; gap: 16px; }
+.grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid.auto { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.grid.auto-sm { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.between { justify-content: space-between; }
+.kpi .label { font-size: .78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.kpi .value { font-family: var(--display); font-size: 1.9rem; font-weight: 700; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.kpi .value.sm { font-size: 1.4rem; }
+.kpi .hint { font-size: .82rem; color: var(--muted); margin-top: 4px; }
+.big { font-family: var(--display); font-size: 2.6rem; font-weight: 700; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+
+/* Chips & pills */
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: .78rem; font-weight: 600; background: var(--surface-2); color: var(--muted); white-space: nowrap; line-height: 1.4; }
+.chip.good { background: var(--good-soft); color: var(--good); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.primary { background: var(--primary-soft); color: var(--primary-strong); }
+.chip.grade { font-family: var(--display); font-size: .9rem; padding: 3px 10px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.swatch { width: 4px; align-self: stretch; border-radius: 4px; flex: none; }
+.status-line { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; font-weight: 500; }
+.status-line svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+.status-line.good { background: var(--good-soft); color: var(--good); }
+.status-line.warn { background: var(--warn-soft); color: var(--warn); }
+.status-line.bad { background: var(--bad-soft); color: var(--bad); }
+.status-line.neutral { background: var(--surface-2); color: var(--muted); }
+
+/* Progress bar */
+.bar { position: relative; height: 10px; border-radius: 999px; background: var(--surface-3); overflow: visible; margin: 10px 0 6px; }
+.bar .fill { height: 100%; border-radius: 999px; background: var(--primary); transition: width .5s cubic-bezier(.2, .8, .2, 1); }
+.bar .fill.good { background: var(--good); }
+.bar .fill.bad { background: var(--bad); }
+.bar .fill.warn { background: var(--warn); }
+.bar .mark { position: absolute; top: -4px; width: 2px; height: 18px; background: var(--fg); border-radius: 2px; opacity: .8; }
+.bar-labels { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Subject card on dashboard */
+.subject-card { display: flex; flex-direction: column; gap: 10px; position: relative; overflow: hidden; }
+.subject-card .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.subject-card .head > .xs { white-space: nowrap; flex: none; padding-top: 3px; }
+.subject-card .title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.subject-card .title h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subject-card .pct { font-family: var(--display); font-size: 2rem; font-weight: 700; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.subject-card .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: .84rem; }
+.subject-card .meta .k { color: var(--muted); }
+.subject-card .need { font-weight: 600; }
+
+/* Priority list */
+.prio { display: flex; flex-direction: column; }
+.prio-item { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-top: 1px solid var(--border); }
+.prio-item:first-child { border-top: 0; }
+.prio-item .txt { flex: 1; min-width: 0; }
+.prio-item .msg { font-size: .88rem; color: var(--muted); }
+
+/* Tables (styled as lists) */
+.table-wrap { overflow-x: auto; }
+table.t { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .9rem; }
+table.t th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+table.t th.sortable { cursor: pointer; user-select: none; }
+table.t th.sortable:hover { color: var(--fg); }
+table.t td { padding: 11px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.t tr:last-child td { border-bottom: 0; }
+table.t td.r, table.t th.r { text-align: right; }
+table.t td.num { font-family: var(--mono); font-size: .86rem; }
+table.t tr.hl td { background: var(--good-soft); }
+table.t tr.custom td { background: var(--primary-soft); }
+table.t .acts { display: flex; gap: 4px; justify-content: flex-end; }
+table.t tbody tr.link { cursor: pointer; }
+table.t tbody tr.link:hover td { background: var(--surface-2); }
+
+/* Forms */
+.form { display: grid; gap: 14px; }
+.form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field label { font-size: .8rem; font-weight: 600; color: var(--muted); }
+.field .help { font-size: .76rem; color: var(--faint); }
+.input, .field input, .field select, .field textarea { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); min-width: 0; }
+.field input:focus, .field select:focus, .field textarea:focus, .input:focus { outline: 2px solid var(--primary); outline-offset: 0; border-color: var(--primary); }
+.field textarea { min-height: 70px; resize: vertical; }
+.field input[type="number"] { font-variant-numeric: tabular-nums; }
+.inline-num { display: inline-flex; align-items: center; gap: 6px; }
+.inline-num input { width: 84px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); font-family: var(--mono); font-size: .88rem; text-align: right; }
+.inline-num input.sm { width: 64px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
+.check input { width: 16px; height: 16px; }
+select.input { appearance: auto; }
+.form-error { color: var(--bad); font-size: .85rem; font-weight: 500; }
+
+/* Grade boundary editor */
+.gb-editor { display: grid; gap: 6px; }
+.gb-row { display: grid; grid-template-columns: 1fr 90px 90px 36px; gap: 8px; align-items: center; }
+.gb-row.head { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+.gb-row input { padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); min-width: 0; width: 100%; }
+.gb-row input.num { text-align: right; }
+.gb-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.gb-list .chip { font-family: var(--mono); font-weight: 500; }
+
+/* Modal */
+.modal-bg { position: fixed; inset: 0; background: rgba(6, 12, 26, .55); display: flex; align-items: flex-end; justify-content: center; z-index: 50; padding: 0; animation: fade .15s ease-out; backdrop-filter: blur(2px); }
+.modal { background: var(--surface); width: min(640px, 100%); max-height: calc(100% - env(safe-area-inset-top, 0px)); overflow: auto; border-radius: 20px 20px 0 0; padding: 22px 20px calc(24px + env(safe-area-inset-bottom, 0px)); box-shadow: var(--shadow); animation: up .2s cubic-bezier(.2, .8, .2, 1); }
+.modal.wide { width: min(800px, 100%); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+.modal-foot .left { margin-right: auto; }
+@media (min-width: 640px) {
+  .modal-bg { align-items: center; padding: 20px; }
+  .modal { border-radius: 20px; max-height: calc(100vh - 40px); padding: 24px; }
+}
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes up { from { transform: translateY(16px); opacity: .6 } to { transform: none; opacity: 1 } }
+@keyframes pop { from { transform: translateY(6px); opacity: 0 } to { transform: none; opacity: 1 } }
+.pop { animation: pop .25s ease-out both; }
+
+/* Toast */
+.toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-weight: 600; font-size: .88rem; z-index: 60; box-shadow: var(--shadow); animation: up .2s ease-out; max-width: calc(100% - 32px); }
+@media (min-width: 900px) { .toast { bottom: 24px; } }
+
+/* Calendar */
+.cal-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-dow { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; text-align: center; padding: 6px 0; }
+.cal-cell { min-height: 96px; border: 1px solid var(--border); border-radius: 10px; padding: 6px; background: var(--surface); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cal-cell.other { background: transparent; opacity: .55; }
+.cal-cell.today { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.cal-cell .d { font-size: .8rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cal-cell.today .d { color: var(--primary); }
+.ev { display: block; width: 100%; text-align: left; border: 0; cursor: pointer; padding: 3px 6px; border-radius: 6px; font-size: .74rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
+.ev:hover { filter: brightness(1.08); }
+.cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.cal-week .cal-cell { min-height: 160px; }
+.cal-list .month-h { margin: 18px 0 8px; }
+.cal-list .item { display: flex; gap: 14px; align-items: center; padding: 10px 6px; border-top: 1px solid var(--border); cursor: pointer; border-radius: 8px; }
+.cal-list .item:hover { background: var(--surface-2); }
+.cal-list .item .day { font-family: var(--display); font-size: 1.4rem; font-weight: 700; width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.cal-list .item .txt { flex: 1; min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: .8rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Charts */
+.chart { width: 100%; height: auto; display: block; }
+.chart text { font-family: var(--body); font-size: 11px; fill: var(--muted); }
+.chart .grid-line { stroke: var(--border); stroke-width: 1; }
+.chart .target { stroke: var(--good); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart .line { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart .area { fill: var(--primary); opacity: .1; }
+.chart .pt { fill: var(--surface); stroke: var(--primary); stroke-width: 2.5; }
+.chart .pt.last { fill: var(--primary); }
+.chart .lbl { font-size: 10.5px; }
+.chart .lbl.target { fill: var(--good); font-weight: 600; }
+
+/* Breakdown */
+.breakdown { font-family: var(--mono); font-size: .84rem; display: grid; gap: 4px; }
+.breakdown .r { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border); align-items: baseline; }
+.breakdown .r:last-child { border-bottom: 0; font-weight: 600; }
+.breakdown .r .n { font-family: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.breakdown .r .x { color: var(--muted); }
+
+/* Setup wizard */
+.setup { min-height: 100vh; display: grid; place-items: center; padding-block: 32px; padding-inline: 16px; }
+.setup .card { width: min(880px, 100%); }
+.steps { display: flex; gap: 8px; align-items: center; font-size: .82rem; color: var(--muted); margin-bottom: 18px; flex-wrap: wrap; }
+.steps .s { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); }
+.steps .s.active { background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; }
+.setup-rows { display: grid; gap: 10px; }
+.setup-row { display: grid; grid-template-columns: 28px 1.4fr .8fr 1fr .7fr auto; gap: 8px; align-items: center; }
+.setup-row .idx { font-family: var(--mono); color: var(--faint); font-size: .8rem; text-align: right; }
+.setup-row input, .setup-row select { padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); min-width: 0; width: 100%; }
+.setup-row.head { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+.setup-gb { grid-column: 1 / -1; padding: 12px; background: var(--surface-2); border-radius: 12px; }
+
+/* What-if */
+.whatif-result { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.slider { width: 100%; accent-color: var(--primary); }
+.range-row { display: flex; align-items: center; gap: 12px; }
+
+/* Predictions */
+.pred-row { display: grid; grid-template-columns: minmax(0, 1.4fr) auto auto auto; gap: 10px 14px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); font-size: .9rem; }
+.pred-row:first-of-type { border-top: 0; }
+.pred-row .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Filters */
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.fchip { border: 1px solid var(--border); background: var(--surface); padding: 5px 11px; border-radius: 999px; cursor: pointer; font-size: .82rem; font-weight: 600; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.fchip.active { background: var(--primary-soft); color: var(--primary-strong); border-color: transparent; }
+.empty { text-align: center; padding: 28px 16px; color: var(--muted); border: 1px dashed var(--border); border-radius: var(--radius); }
+.empty .btn { margin-top: 12px; }
+.notice { padding: 10px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-size: .86rem; font-weight: 500; }
+.code-box { font-family: var(--mono); font-size: .78rem; background: var(--surface-2); padding: 12px; border-radius: 10px; max-height: 260px; overflow: auto; white-space: pre; border: 1px solid var(--border); }
+textarea.code { font-family: var(--mono); font-size: .8rem; min-height: 140px; }
+.sheet-list { display: grid; gap: 6px; }
+.sheet-list .nav-item { color: var(--fg); }
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 899px) {
+  .frame { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 16px; }
+  .topbar .brand { padding: 0; }
+  .main { padding-block: 18px calc(var(--nav-h) + 24px + env(safe-area-inset-bottom, 0px)); }
+  .bottomnav { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)); }
+  .bottomnav button { border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: .66rem; font-weight: 600; color: var(--muted); padding: 4px 2px; border-radius: 10px; cursor: pointer; }
+  .bottomnav button svg { width: 22px; height: 22px; }
+  .bottomnav button.active { color: var(--primary); }
+  .grid.cols-2, .grid.cols-3, .grid.cols-4 { grid-template-columns: 1fr 1fr; }
+  .whatif-result { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .grid.cols-2, .grid.cols-3, .grid.cols-4, .grid.auto, .grid.auto-sm { grid-template-columns: 1fr; }
+  .form .two, .form .three { grid-template-columns: 1fr; }
+  .setup-row { grid-template-columns: 1fr 1fr; }
+  .setup-row .idx { display: none; }
+  .setup-row.head { display: none; }
+  .cal-cell { min-height: 64px; padding: 4px; }
+  .ev { font-size: 0; padding: 0; height: 6px; border-radius: 3px; }
+  .cal-week { grid-template-columns: 1fr; }
+  .cal-week .cal-cell { min-height: 0; }
+  .cal-week .ev { font-size: .74rem; padding: 3px 6px; height: auto; }
+  .pred-row { grid-template-columns: 1fr 1fr; }
+  .big { font-size: 2.2rem; }
+  .gb-row { grid-template-columns: 1fr 70px 70px 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* Calmer additions */
+.label { font-size: .82rem; color: var(--muted); font-weight: 600; }
+.hint-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; background: var(--primary-soft); border-color: transparent; }
+.hint-card h2 { color: var(--primary-strong); }
+.list { display: flex; flex-direction: column; }
+.list-row { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-top: 1px solid var(--border); cursor: pointer; border-radius: 8px; }
+.list-row:first-child { border-top: 0; }
+.list-row:hover { background: var(--surface-2); }
+.list-row .when { width: 64px; flex: none; }
+.list-row .txt { flex: 1; min-width: 0; }
+.list-row .txt .strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-row .r { flex: none; text-align: right; }
+.need-list { display: flex; flex-direction: column; }
+.need-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+.need-row:first-child { border-top: 0; }
+.need-marks { font-size: 1.15rem; }
+.ov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; margin-bottom: 6px; }
+.overview .big { font-size: 2.4rem; }
+.gb-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 18px; align-items: start; }
+details.details { padding: 0; }
+details.details > summary { list-style: none; cursor: pointer; padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+details.details > summary::-webkit-details-marker { display: none; }
+details.details > summary::after { content: '+'; font-family: var(--display); font-size: 1.3rem; color: var(--muted); margin-left: auto; }
+details.details[open] > summary::after { content: '–'; }
+details.details > summary h2 { font-size: 1.1rem; }
+details.details > .details-body { padding: 0 22px 22px; }
+.subject-card .need { margin-top: 2px; }
+.subject-card .pct { font-size: 2.2rem; }
+@media (max-width: 640px) {
+  .ov-grid { grid-template-columns: 1fr; }
+  .gb-wrap { grid-template-columns: 1fr; }
+  .list-row .when { width: 54px; }
+}
+
+.save-status { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 10px; color: var(--muted); }
+.save-status svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+.save-status.compact { padding: 6px; display: inline-flex; }
+.save-status.compact svg { margin: 0; }
+
+.auth-card { width: min(460px, 100%) !important; }
+.auth-card .seg { display: flex; width: 100%; }
+.auth-card .seg button { flex: 1; white-space: nowrap; }
+.auth-card .help { font-size: .85rem; color: var(--muted); }
+.account { padding: 8px 10px; border-radius: 10px; min-width: 0; }
+
+.need-two { display: flex; gap: 18px; align-items: flex-start; text-align: right; }
+.need-two > div:last-child { opacity: .85; }
+@media (max-width: 640px) { .need-two { gap: 12px; } }
+
+.need-row.next { background: var(--primary-soft); margin: 0 -10px; padding: 12px 10px; border-radius: 12px; border-top: 0; }
+.need-row.next + .need-row { border-top: 0; }
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script>
+/* Grade calculation engine. Pure functions, no DOM. Works in browser and Node. */
+const Engine = (() => {
+  const num = v => (v === '' || v == null) ? null : (isFinite(+v) ? +v : null);
+  const sum = arr => arr.reduce((a, b) => a + b, 0);
+  const round = (v, d = 1) => (v == null || !isFinite(v)) ? null : Math.round(v * 10 ** d) / 10 ** d;
+  const pct = (o, m) => (m > 0 ? (o / m) * 100 : 0);
+  const hasWeight = a => { const w = num(a.weight); return w != null && w > 0; };
+  const EPS = 1e-9;
+
+  function sortedGrades(grades) {
+    return (grades || [])
+      .filter(g => g && g.name != null && String(g.name).trim() !== '' && num(g.min) != null)
+      .map(g => ({ name: String(g.name).trim(), min: +g.min, max: num(g.max) }))
+      .sort((a, b) => b.min - a.min);
+  }
+
+  function gradeFor(p, grades) {
+    if (p == null || !isFinite(p)) return null;
+    for (const g of sortedGrades(grades)) if (p >= g.min - EPS) return g.name;
+    return null;
+  }
+
+  function boundaryFor(name, grades) {
+    const g = sortedGrades(grades).find(g => g.name === name);
+    return g ? g.min : null;
+  }
+
+  // Resolve a grade name to {name, min}; falls back to the subject target, then the top grade.
+  function resolveTarget(subject, name) {
+    const gs = sortedGrades(subject.grades);
+    if (!gs.length) return { name: null, min: null };
+    const g = gs.find(g => g.name === name) || gs.find(g => g.name === subject.target) || gs[0];
+    return { name: g.name, min: g.min };
+  }
+
+  function subjectMode(subject, completed, upcoming) {
+    if (subject.mode === 'weighted' || subject.mode === 'marks') return subject.mode;
+    const any = completed.some(hasWeight) || upcoming.some(hasWeight);
+    return any ? 'weighted' : 'marks';
+  }
+
+  // Unified model: in weighted mode w = weightage, in marks mode w = max marks.
+  // Either way the subject percentage is sum(pct_i * w_i) / sum(w_i).
+  function buildModel(subject, allCompleted, allUpcoming) {
+    const completed = allCompleted.filter(a => a.subjectId === subject.id);
+    const upcoming = allUpcoming.filter(u => u.subjectId === subject.id);
+    const mode = subjectMode(subject, completed, upcoming);
+
+    const cItems = completed.map(a => {
+      const max = num(a.max) ?? 0, obtained = num(a.obtained) ?? 0;
+      const p = pct(obtained, max);
+      const w = mode === 'weighted' ? (hasWeight(a) ? +a.weight : null) : max;
+      const included = w != null && w > 0 && max > 0;
+      return { ...a, obtained, max, pct: p, w, included, contribution: included ? p * w : 0 };
+    });
+    const uItems = upcoming.map(u => {
+      const max = num(u.max) ?? 0;
+      const w = mode === 'weighted' ? (hasWeight(u) ? +u.weight : null) : max;
+      const included = w != null && w > 0 && max > 0;
+      const e = num(u.expected);
+      return { ...u, max, w, included, expectedPct: e != null ? Math.max(0, e) : null };
+    });
+
+    const incC = cItems.filter(i => i.included), incU = uItems.filter(i => i.included);
+    const Wc = sum(incC.map(i => i.w));
+    const Wu = sum(incU.map(i => i.w));
+    const sumC = sum(incC.map(i => i.contribution));
+    const current = Wc > 0 ? sumC / Wc : null;
+    const marksObtained = sum(incC.map(i => i.obtained)), marksMax = sum(incC.map(i => i.max));
+
+    return {
+      subject, mode, completed: cItems, upcoming: uItems,
+      Wc, Wu, Wtotal: Wc + Wu, sumC, current,
+      marksObtained, marksMax,
+      excludedCompleted: cItems.filter(i => !i.included),
+      excludedUpcoming: uItems.filter(i => !i.included),
+      grade: gradeFor(current, subject.grades),
+    };
+  }
+
+  // Weightage validation (weighted mode only).
+  function weightSummary(model) {
+    if (model.mode !== 'weighted') return { mode: 'marks', ok: true, completed: model.marksMax, upcoming: sum(model.upcoming.filter(u => u.included).map(u => u.max)) };
+    const total = model.Wc + model.Wu;
+    return {
+      mode: 'weighted', completed: model.Wc, upcoming: model.Wu, total,
+      ok: Math.abs(total - 100) < 0.005,
+      over: total > 100 + 0.005, under: total < 100 - 0.005,
+      excluded: model.excludedCompleted.length + model.excludedUpcoming.length,
+    };
+  }
+
+  // Requirement analysis against a target boundary T (percent).
+  function analyze(model, T) {
+    const { Wc, Wu, Wtotal, sumC, current } = model;
+    const base = { T, current, Wc, Wu, Wtotal, perTest: [], required: null, minPossible: null, maxPossible: null, distance: null };
+    if (T == null) return { ...base, status: 'no_target' };
+    if (Wtotal <= 0) return { ...base, status: 'empty' };
+    const minPossible = sumC / Wtotal;
+    const maxPossible = (sumC + 100 * Wu) / Wtotal;
+    const required = Wu > 0 ? (T * Wtotal - sumC) / Wu : null;
+    let status;
+    if (minPossible >= T - EPS) status = 'secured';
+    else if (Wu <= 0) status = 'missed';
+    else if (maxPossible < T - EPS) status = 'impossible';
+    else if (current != null && current >= T - EPS) status = 'on_track';
+    else status = 'needs';
+    // Per upcoming test, ordered by date. afterPct/afterMarks: what this test needs, from the current position,
+    // to be AT the boundary right after it (earlier results + this test only). afterMax: the best percentage
+    // reachable right after it. pct/marks: the course-end even plan (same % on every remaining test).
+    const perTest = model.upcoming.filter(u => u.included).slice().sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999'))).map(u => {
+      const afterPct = (T * (Wc + u.w) - sumC) / u.w;
+      return {
+        id: u.id, name: u.name, date: u.date, max: u.max, w: u.w,
+        afterPct, afterMarks: marksFor(afterPct, u.max), afterMax: (sumC + 100 * u.w) / (Wc + u.w),
+        pct: required, marks: required == null ? null : marksFor(required, u.max),
+      };
+    });
+    return { ...base, status, required, minPossible, maxPossible, perTest, next: perTest[0] || null, distance: current == null ? null : T - current };
+  }
+
+  // Smallest whole mark count that meets a required percentage.
+  function marksFor(reqPct, max) {
+    if (reqPct == null || !(max > 0)) return null;
+    return Math.min(max, Math.max(0, Math.ceil((reqPct / 100) * max - EPS)));
+  }
+
+  // Predicted final using expected scores; unpredicted tests use `fill` (current avg by default).
+  function predict(model, T, assumption = 'current') {
+    let s = model.sumC, unpredictedW = 0, predictedW = 0;
+    for (const u of model.upcoming.filter(u => u.included)) {
+      if (u.expectedPct != null) { s += u.expectedPct * u.w; predictedW += u.w; }
+      else unpredictedW += u.w;
+    }
+    const fill = assumption === 'target' ? (T ?? 0) : assumption === 'zero' ? 0 : (model.current ?? (T ?? 0));
+    const final = model.Wtotal > 0 ? (s + fill * unpredictedW) / model.Wtotal : null;
+    const requiredRest = (unpredictedW > 0 && T != null) ? (T * model.Wtotal - s) / unpredictedW : null;
+    const grade = gradeFor(final, model.subject.grades);
+    return { final, grade, predictedW, unpredictedW, fill, requiredRest, assumption };
+  }
+
+  // What-if for one upcoming test. Everything is measured against the course-end target T:
+  //   afterFor(marks)    -> the subject percentage right after this test
+  //   needRestFor(marks) -> the average still needed on the other remaining tests to finish at T (null if none)
+  //   planPct/planMarks  -> the even plan: the same percentage on every remaining test, weighted by weightage
+  function whatIfContext(model, T, testId) {
+    const test = model.upcoming.find(u => u.id === testId && u.included);
+    if (!test) return null;
+    const { sumC, Wc, Wu, Wtotal } = model;
+    const restW = Wu - test.w;
+    const afterFor = marks => (sumC + pct(marks, test.max) * test.w) / (Wc + test.w);
+    const needRestFor = marks => (restW > 1e-9 && T != null) ? (T * Wtotal - sumC - pct(marks, test.max) * test.w) / restW : null;
+    const planPct = (T != null && Wu > 0) ? (T * Wtotal - sumC) / Wu : null;
+    const planMarks = planPct == null ? null : marksFor(planPct, test.max);
+    const finalOK = marks => T == null ? false : restW > 1e-9 ? needRestFor(marks) <= 100 + EPS : afterFor(marks) >= T - EPS;
+    return { test, T, restW, afterFor, needRestFor, planPct, planMarks, finalOK, achievable: planPct != null && planPct <= 100 + EPS, secured: planPct != null && planPct <= EPS };
+  }
+
+  function whatIfRows(ctx, extraMarks) {
+    const max = ctx.test.max;
+    const step = max <= 20 ? 1 : max <= 50 ? 5 : max <= 100 ? 10 : Math.ceil(max / 10);
+    const set = new Set();
+    for (let m = 0; m <= max; m += step) set.add(m);
+    set.add(max);
+    if (ctx.planMarks != null && ctx.planMarks >= 0 && ctx.planMarks <= max) set.add(ctx.planMarks);
+    if (extraMarks != null && extraMarks >= 0 && extraMarks <= max) set.add(extraMarks);
+    return [...set].sort((a, b) => a - b).map(m => ({
+      marks: m, pct: pct(m, max), after: ctx.afterFor(m), needRest: ctx.needRestFor(m),
+      finalOK: ctx.finalOK(m), isPlan: m === ctx.planMarks, isCustom: m === extraMarks,
+    }));
+  }
+
+  // Overall performance across subjects. items: [{subject, value}]
+  function overall(items, method) {
+    const valid = items.filter(i => i.value != null && isFinite(i.value));
+    if (!valid.length) return { value: null, method, count: 0, totalWeight: 0 };
+    if (method === 'weighted') {
+      const wi = valid.filter(i => num(i.subject.weight) != null && +i.subject.weight > 0);
+      const W = sum(wi.map(i => +i.subject.weight));
+      const allW = sum(items.filter(i => num(i.subject.weight) != null && +i.subject.weight > 0).map(i => +i.subject.weight));
+      if (W <= 0) return { value: null, method, count: 0, totalWeight: allW, reason: 'no_weights' };
+      return { value: sum(wi.map(i => i.value * +i.subject.weight)) / W, method, count: wi.length, totalWeight: allW };
+    }
+    return { value: sum(valid.map(i => i.value)) / valid.length, method: 'simple', count: valid.length, totalWeight: 0 };
+  }
+
+  return { num, sum, round, pct, hasWeight, sortedGrades, gradeFor, boundaryFor, resolveTarget, subjectMode, buildModel, weightSummary, analyze, marksFor, predict, whatIfContext, whatIfRows, overall };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
+
+/* ---------- Utilities ---------- */
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const r1 = v => (v == null || !isFinite(v)) ? null : Math.round(v * 10) / 10;
+const fmtNum = (v, d = 1) => (v == null || !isFinite(v)) ? '—' : String(Math.round(v * 10 ** d) / 10 ** d);
+const fmtPct = (v, d = 1) => (v == null || !isFinite(v)) ? '—' : fmtNum(v, d) + '%';
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const pad2 = n => String(n).padStart(2, '0');
+const iso = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const parseISO = s => { if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const todayISO = () => iso(new Date());
+const addDaysISO = (s, n) => { const d = parseISO(s) || new Date(); d.setDate(d.getDate() + n); return iso(d); };
+const fmtDate = s => { const d = parseISO(s); return d ? `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` : 'No date'; };
+const fmtShort = s => { const d = parseISO(s); return d ? `${d.getDate()} ${MONTHS[d.getMonth()]}` : '—'; };
+const daysUntil = s => { const d = parseISO(s); if (!d) return null; return Math.round((d - parseISO(todayISO())) / 86400000); };
+const relDays = s => { const n = daysUntil(s); if (n == null) return ''; if (n === 0) return 'Today'; if (n === 1) return 'Tomorrow'; if (n === -1) return 'Yesterday'; return n > 0 ? `in ${n} days` : `${-n} days ago`; };
+const byDate = (a, b) => (a.date || '9999').localeCompare(b.date || '9999');
+const byDateDesc = (a, b) => (b.date || '').localeCompare(a.date || '');
+
+const COLORS = ['#2457e6', '#7c3aed', '#059669', '#d97706', '#e11d48', '#0891b2', '#ea580c', '#c026d3', '#65a30d', '#475569'];
+const TYPES = ['Pen and paper', 'Creative', 'Exit ticket'];
+const MAX_SUBJECTS = 10;
+
+const PRESETS = {
+  'igcse': { label: 'A* – G (IGCSE)', grades: [['A*', 90, 100], ['A', 80, 89.99], ['B', 70, 79.99], ['C', 60, 69.99], ['D', 50, 59.99], ['E', 40, 49.99], ['F', 30, 39.99], ['G', 20, 29.99]] },
+  'uk': { label: 'A* – E', grades: [['A*', 90, 100], ['A', 80, 89.99], ['B', 70, 79.99], ['C', 60, 69.99], ['D', 50, 59.99], ['E', 40, 49.99]] },
+  'ukf': { label: 'A* – F', grades: [['A*', 90, 100], ['A', 80, 89.99], ['B', 70, 79.99], ['C', 60, 69.99], ['D', 50, 59.99], ['E', 40, 49.99], ['F', 0, 39.99]] },
+  'ib': { label: '7 – 1 (IB)', grades: [['7', 80, 100], ['6', 70, 79.99], ['5', 60, 69.99], ['4', 50, 59.99], ['3', 40, 49.99], ['2', 30, 39.99], ['1', 0, 29.99]] },
+  'us': { label: 'A – F (US)', grades: [['A', 90, 100], ['B', 80, 89.99], ['C', 70, 79.99], ['D', 60, 69.99], ['F', 0, 59.99]] },
+  'gcse9': { label: '9 – 1 (GCSE)', grades: [['9', 90, 100], ['8', 80, 89.99], ['7', 70, 79.99], ['6', 60, 69.99], ['5', 50, 59.99], ['4', 40, 49.99], ['3', 30, 39.99], ['2', 20, 29.99], ['1', 10, 19.99]] },
+};
+const presetGrades = key => (PRESETS[key] || PRESETS.igcse).grades.map(([name, min, max]) => ({ name, min, max }));
+
+const DEFAULT_SUBJECTS = [['ICT', 'ICT'], ['English Literature', 'ENG LIT'], ['English Language', 'ENG LANG'], ['Business', 'BUS'], ['International Mathematics', 'INT MATH'], ['Hindi', 'HINDI'], ['Physics', 'PHY'], ['Chemistry', 'CHEM'], ['Biology', 'BIO'], ['Global Perspectives', 'GP']];
+const makeDefaultSubjects = () => DEFAULT_SUBJECTS.map(([name, code], i) => ({ id: uid(), name, code, target: 'A*', mode: 'auto', color: i, weight: null, grades: presetGrades('igcse') }));
+
+/* ---------- State ---------- */
+const KEY = 'astar-planner.v2';
+let storageOK = true;
+const defaultState = () => ({ version: 2, updatedAt: 0, settings: { theme: 'system', overallMethod: 'simple', predAssumption: 'current' }, subjects: makeDefaultSubjects(), assessments: [], upcoming: [] });
+
+function normalize(raw) {
+  const s = defaultState();
+  if (!raw || typeof raw !== 'object') return s;
+  Object.assign(s.settings, raw.settings || {});
+  s.updatedAt = Number(raw.updatedAt) || 0;
+  const arr = v => Array.isArray(v) ? v : [];
+  s.subjects = arr(raw.subjects).filter(x => x && x.name).slice(0, MAX_SUBJECTS).map((x, i) => ({
+    id: x.id || uid(), name: String(x.name), code: x.code ? String(x.code) : '',
+    target: x.target != null ? String(x.target) : 'A*', mode: ['auto', 'weighted', 'marks'].includes(x.mode) ? x.mode : 'auto',
+    color: Number.isInteger(x.color) ? x.color : i % COLORS.length,
+    weight: Engine.num(x.weight),
+    grades: arr(x.grades).map(g => ({ name: String(g.name ?? ''), min: Engine.num(g.min) ?? 0, max: Engine.num(g.max) })).filter(g => g.name),
+  }));
+  const ids = new Set(s.subjects.map(x => x.id));
+  s.assessments = arr(raw.assessments).filter(a => a && ids.has(a.subjectId)).map(a => ({
+    id: a.id || uid(), subjectId: a.subjectId, name: String(a.name || 'Assessment'), date: a.date || '', type: TYPES.includes(a.type) ? a.type : TYPES[0],
+    obtained: Engine.num(a.obtained) ?? 0, max: Engine.num(a.max) ?? 0, weight: Engine.num(a.weight), notes: a.notes ? String(a.notes) : '',
+  }));
+  s.upcoming = arr(raw.upcoming).filter(u => u && ids.has(u.subjectId)).map(u => ({
+    id: u.id || uid(), subjectId: u.subjectId, name: String(u.name || 'Upcoming test'), date: u.date || '', max: Engine.num(u.max) ?? 0,
+    weight: Engine.num(u.weight), target: u.target ? String(u.target) : '', expected: Engine.num(u.expected), notes: u.notes ? String(u.notes) : '',
+  }));
+  return s;
+}
+const activeKey = () => (typeof storageKey === 'function' ? storageKey() : KEY);
+function load() { if (typeof storageKey === 'function') return defaultState(); try { const raw = localStorage.getItem(KEY); if (raw) return normalize(JSON.parse(raw)); } catch (e) { storageOK = false; } return defaultState(); }
+function save() {
+  state.updatedAt = Date.now();
+  const k = activeKey();
+  if (k) { try { localStorage.setItem(k, JSON.stringify(state)); storageOK = true; } catch (e) { storageOK = false; } }
+  if (typeof cloudSchedule === 'function') cloudSchedule();
+}
+
+let state = load();
+const ui = {
+  view: 'dashboard', subjectId: null,
+  assessFilter: 'all', upFilter: 'all', upSort: { key: 'date', dir: 1 },
+  cal: { mode: 'month', cursor: todayISO() },
+  calc: { subjectId: null, testId: null, marks: null },
+  modal: null, toast: null, toastTimer: null,
+};
+const subjectById = id => state.subjects.find(s => s.id === id);
+const color = s => COLORS[(s && s.color) % COLORS.length] || COLORS[0];
+const nextColor = () => { const used = new Set(state.subjects.map(s => s.color)); for (let i = 0; i < COLORS.length; i++) if (!used.has(i)) return i; return state.subjects.length % COLORS.length; };
+
+/* ---------- Derived data ---------- */
+function computeSubject(s) {
+  const model = Engine.buildModel(s, state.assessments, state.upcoming);
+  const target = Engine.resolveTarget(s, null);
+  const analysis = Engine.analyze(model, target.min);
+  const ws = Engine.weightSummary(model);
+  const ups = state.upcoming.filter(u => u.subjectId === s.id).sort(byDate);
+  const next = ups.find(u => (daysUntil(u.date) ?? 0) >= 0) || ups[0] || null;
+  return { subject: s, model, target, analysis, ws, next };
+}
+function computeAll() { return state.subjects.map(computeSubject); }
+function overallInfo(all) {
+  return Engine.overall(all.map(c => ({ subject: c.subject, value: c.model.current })), state.settings.overallMethod);
+}
+const PRIO = { impossible: 0, needs: 1, missed: 2, on_track: 3, secured: 4, empty: 5, no_target: 6 };
+function prioSort(a, b) {
+  const d = PRIO[a.analysis.status] - PRIO[b.analysis.status];
+  if (d) return d;
+  if (a.analysis.status === 'needs') return (b.analysis.required ?? 0) - (a.analysis.required ?? 0);
+  return a.subject.name.localeCompare(b.subject.name);
+}
+function statusInfo(c) {
+  const { analysis: a, target } = c; const T = target.name || 'target';
+  switch (a.status) {
+    case 'secured': return { kind: 'good', short: `${T} secured`, long: `${T} currently secured. Even with 0 on the remaining assessments you stay at or above ${fmtPct(a.T)}.` };
+    case 'on_track': return { kind: 'good', short: `Already at ${T}`, long: `Already at ${T}. ${fmtPct(Math.max(0, a.required))} on each remaining test keeps you there to the end of the course.` };
+    case 'needs': return { kind: 'warn', short: `Need ${fmtPct(a.required)}`, long: a.perTest.length > 1 ? `Currently ${fmtPct(a.current)}. You need ${fmtPct(a.required)} on each of the ${a.perTest.length} remaining tests (weighted by weightage) to finish at ${T}.` : `Currently ${fmtPct(a.current)}. You need ${fmtPct(a.required)} on the remaining test to reach ${T}.` };
+    case 'impossible': return { kind: 'bad', short: `${T} not achievable`, long: `${T} is not achievable with the remaining assessments. Highest possible final percentage: ${fmtPct(a.maxPossible)}.` };
+    case 'missed': return { kind: 'bad', short: `Below ${T}`, long: `No remaining assessments. Final percentage ${fmtPct(a.current)} is below the ${T} boundary of ${fmtPct(a.T)}.` };
+    case 'empty': return { kind: 'neutral', short: 'No data yet', long: 'Add completed or upcoming assessments to see what you need.' };
+    default: return { kind: 'neutral', short: 'No boundaries', long: 'Set grade boundaries for this subject to calculate requirements.' };
+  }
+}
+const gradeLabel = (g) => g == null ? 'U' : g;
+function gradeChip(g, target, size = 'grade') {
+  const cls = g == null ? 'bad' : g === target ? 'good' : 'primary';
+  return `<span class="chip ${size} ${cls}" title="Current grade">${esc(gradeLabel(g))}</span>`;
+}
+function fillClass(c) { const k = statusInfo(c).kind; return k === 'good' ? 'good' : k === 'bad' ? 'bad' : k === 'warn' ? 'warn' : ''; }
+
+/* ---------- Sample data (uses the same ten subjects) ---------- */
+function demoState() {
+  const t = todayISO(), d = n => addDaysISO(t, n);
+  const subs = makeDefaultSubjects();
+  const by = code => subs.find(s => s.code === code);
+  const [ICT, LIT, LANG, BUS, MATH, HIN, PHY, CHEM, BIO, GP] = ['ICT', 'ENG LIT', 'ENG LANG', 'BUS', 'INT MATH', 'HINDI', 'PHY', 'CHEM', 'BIO', 'GP'].map(by);
+  PHY.grades = PHY.grades.map(g => g.name === 'A*' ? { ...g, min: 85 } : g.name === 'A' ? { ...g, max: 84.99 } : g);
+  LIT.target = 'A';
+  const A = (s, name, date, obtained, max, weight, type = 'Pen and paper', notes = '') => ({ id: uid(), subjectId: s.id, name, date, obtained, max, weight, type, notes });
+  const U = (s, name, date, max, weight, target = '', expected = null, notes = '') => ({ id: uid(), subjectId: s.id, name, date, max, weight, target, expected, notes });
+  return normalize({
+    settings: { theme: state.settings.theme, overallMethod: 'simple', predAssumption: 'current' },
+    subjects: subs,
+    assessments: [
+      A(MATH, 'Test 1', d(-46), 45, 50, 15), A(MATH, 'Test 2', d(-31), 42, 50, 15), A(MATH, 'Midterm', d(-12), 88, 100, 30),
+      A(PHY, 'Mechanics Exit Ticket', d(-50), 27, 30, 10, 'Exit ticket'), A(PHY, 'Waves Test', d(-27), 52, 60, 20), A(PHY, 'Practical', d(-9), 45, 50, 20, 'Creative'),
+      A(CHEM, 'Organic Exit Ticket', d(-40), 18, 25, 10, 'Exit ticket'), A(CHEM, 'Test 1', d(-18), 38, 50, 20),
+      A(LIT, 'Essay 1', d(-44), 32, 40, 20), A(LIT, 'Poetry Analysis', d(-25), 35, 40, 20, 'Creative'),
+      A(BIO, 'Cells Exit Ticket', d(-42), 22, 25, null, 'Exit ticket'), A(BIO, 'Genetics Test', d(-22), 41, 50, null), A(BIO, 'Lab Report', d(-6), 17, 20, null, 'Creative'),
+      A(ICT, 'Project', d(-15), 47, 50, 40, 'Creative'),
+      A(GP, 'Essay 1', d(-38), 24, 40, 30, 'Creative'), A(GP, 'Essay 2', d(-14), 28, 40, 30, 'Creative'),
+      A(LANG, 'Writing Test', d(-20), 34, 40, null), A(HIN, 'Unit Test', d(-16), 41, 50, null), A(BUS, 'Case Study', d(-10), 36, 40, null, 'Creative'),
+    ],
+    upcoming: [
+      U(MATH, 'Algebra Test', d(15), 50, 15, '', null, 'Chapters 4–6'), U(MATH, 'Final Test', d(35), 50, 25),
+      U(PHY, 'Electricity Test', d(18), 60, 25), U(PHY, 'Final Exam', d(48), 100, 25),
+      U(CHEM, 'Organic Chemistry Exam', d(24), 80, 30), U(CHEM, 'Final Exam', d(52), 100, 40),
+      U(LIT, 'Literature Essay', d(21), 40, 10), U(LIT, 'Final Exam', d(50), 100, 50),
+      U(BIO, 'Ecology Test', d(30), 50, null), U(ICT, 'Theory Exam', d(28), 100, 60), U(GP, 'Final Exam', d(45), 100, 40),
+      U(LANG, 'Reading Test', d(12), 40, null), U(HIN, 'Oral Exam', d(26), 30, null), U(BUS, 'Unit Test', d(19), 50, null),
+    ],
+  });
+}
+
+/* ---------- Icons ---------- */
+const ICONS = {
+  dashboard: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  subjects: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  assessments: '<path d="M9 5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="m9 14 2 2 4-4"/>',
+  upcoming: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  calendar: '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  calc: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2M12 11h2M16 11h0M8 15h2M12 15h2M16 15v3"/>',
+  predictions: '<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
+  settings: '<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="14" cy="18" r="2"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  left: '<path d="m15 18-6-6 6-6"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  warn: '<path d="M12 9v4M12 17h0"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h0"/>',
+  more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+  upload: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 19h16"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  cloud: '<path d="M17.5 19a4.5 4.5 0 0 0 .4-9A7 7 0 0 0 4.3 12.5 3.5 3.5 0 0 0 6 19z"/>',
+  device: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  flag: '<path d="M4 22V4h12l-2 4 2 4H4"/>',
+};
+const icon = (n, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
+
+const NAV = [
+  ['dashboard', 'Dashboard', 'dashboard'], ['subjects', 'Subjects', 'subjects'], ['assessments', 'Assessments', 'assessments'],
+  ['upcoming', 'Upcoming Tests', 'upcoming'], ['calendar', 'Calendar', 'calendar'], ['calc', 'A* Calculator', 'calc'],
+  ['predictions', 'Predictions', 'predictions'], ['settings', 'Settings', 'settings'],
+];
+const MOBILE_NAV = ['dashboard', 'subjects', 'calc', 'calendar', 'more'];
+
+/* ---------- Theme ---------- */
+function applyTheme() {
+  const t = state.settings.theme;
+  if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+  else document.documentElement.removeAttribute('data-theme');
+}
+function isDarkNow() {
+  const t = state.settings.theme;
+  if (t === 'dark') return true; if (t === 'light') return false;
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+/* ---------- Shared components ---------- */
+function progressBar(current, targetMin, cls = '') {
+  const w = clamp(current ?? 0, 0, 100), m = clamp(targetMin ?? 0, 0, 100);
+  return `<div class="bar"><div class="fill ${cls}" style="width:${w}%"></div>${targetMin != null ? `<div class="mark" style="left:calc(${m}% - 1px)" title="Target boundary ${fmtPct(targetMin)}"></div>` : ''}</div>`;
+}
+function statusLine(c) {
+  const st = statusInfo(c);
+  const ic = st.kind === 'good' ? 'check' : st.kind === 'bad' ? 'warn' : st.kind === 'warn' ? 'target' : 'info';
+  return `<div class="status-line ${st.kind}">${icon(ic)}<span>${esc(st.long)}</span></div>`;
+}
+function weightLine(c) {
+  const ws = c.ws;
+  if (ws.mode === 'marks') return `<div class="status-line neutral">${icon('info')}<span>Marks-based: ${fmtNum(c.model.marksObtained)} / ${fmtNum(c.model.marksMax)} marks so far${ws.upcoming ? `, ${fmtNum(ws.upcoming)} marks upcoming` : ''}. Add weightages to switch to weighted mode.</span></div>`;
+  const parts = `Completed ${fmtNum(ws.completed)}% · Upcoming ${fmtNum(ws.upcoming)}% · Total ${fmtNum(ws.total)}%`;
+  if (ws.ok) return `<div class="status-line good">${icon('check')}<span>Your assessment weightages add up to 100%. ${parts}</span></div>`;
+  const ex = ws.excluded ? ` ${ws.excluded} assessment${ws.excluded > 1 ? 's' : ''} without a weightage ${ws.excluded > 1 ? 'are' : 'is'} left out of the percentage.` : '';
+  return `<div class="status-line warn">${icon('warn')}<span>Your assessment weightages currently add up to ${fmtNum(ws.total)}%${ws.under ? ` (${fmtNum(100 - ws.total)}% unassigned)` : ' (over 100%)'}. ${parts}.${ex}</span></div>`;
+}
+function subjectChips(activeId, action, allowAll = true) {
+  const chips = state.subjects.map(s => `<button class="fchip ${activeId === s.id ? 'active' : ''}" data-action="${action}" data-id="${s.id}"><span class="dot" style="background:${color(s)}"></span>${esc(s.name)}</button>`).join('');
+  return `<div class="filters">${allowAll ? `<button class="fchip ${activeId === 'all' ? 'active' : ''}" data-action="${action}" data-id="all">All</button>` : ''}${chips}</div>`;
+}
+function testAnalysis(c, u) {
+  const tgt = u.target ? Engine.resolveTarget(c.subject, u.target) : c.target;
+  const a = u.target && tgt.min !== c.target.min ? Engine.analyze(c.model, tgt.min) : c.analysis;
+  return { tgt, a, pt: a.perTest.find(p => p.id === u.id) };
+}
+function requiredCell(c, u) {
+  const { tgt, a, pt } = testAnalysis(c, u);
+  if (!pt) return `<span class="chip">Not counted</span>`;
+  if (a.status === 'secured') return `<span class="chip good">${esc(tgt.name)} secured</span>`;
+  if (a.status === 'impossible') return `<span class="chip bad" title="Best possible final percentage ${fmtPct(a.maxPossible)}">Not achievable</span>`;
+  const cls = a.status === 'on_track' ? 'good' : 'warn';
+  return `<span class="num strong">${pt.marks}/${fmtNum(pt.max)}</span> <span class="chip ${cls}" title="${a.perTest.length > 1 ? 'The same percentage on every remaining test, weighted by weightage' : 'Needed on the remaining test'}">${fmtPct(pt.pct)}</span>`;
+}
+function needText(pt, c) {
+  const a = c.analysis, T = c.target.name;
+  if (a.status === 'secured') return { kind: 'good', main: 'Any score', sub: `${T} is already secured` };
+  if (a.status === 'impossible') return { kind: 'bad', main: 'Not enough', sub: `best possible final ${fmtPct(a.maxPossible)}` };
+  const kind = a.status === 'on_track' ? 'good' : 'warn';
+  return { kind, main: `${pt.marks}/${fmtNum(pt.max)}`, pct: fmtPct(pt.pct), sub: a.status === 'on_track' ? `to stay at ${T}` : `for ${T}` };
+}
+function neededRows(c) {
+  const a = c.analysis, m = c.model;
+  if (!a.perTest.length) return '';
+  const rows = a.perTest.map((p, i) => { const n = needText(p, c); return `<div class="need-row ${i === 0 ? 'next' : ''}"><div>${i === 0 ? '<div class="eyebrow" style="color:var(--primary-strong)">Next test</div>' : ''}<div class="strong">${esc(p.name)}</div><div class="xs muted">${esc(fmtDate(p.date))} · ${esc(relDays(p.date))}${m.mode === 'weighted' ? ` · ${fmtNum(p.w)}% weightage` : ''}</div></div><div style="text-align:right"><div class="num strong need-marks" style="color:var(--${n.kind === 'warn' ? 'fg' : n.kind})">${n.main}${n.pct ? ` <span class="chip ${n.kind}">${n.pct}</span>` : ''}</div><div class="xs muted">${n.sub}</div></div></div>`; }).join('');
+  const note = ['needs', 'on_track'].includes(a.status) ? `<p class="xs muted" style="margin-top:8px">${a.perTest.length > 1 ? `Scoring <b>${fmtPct(Math.max(0, a.required))}</b> on every remaining test, with each test counted by its weightage, finishes the course at ${esc(c.target.name)}. The marks shown are that percentage of each test. Do better on one and the others need less; the What-if calculator shows by how much.` : `${fmtPct(Math.max(0, a.required))} on the last remaining test finishes the course at ${esc(c.target.name)}.`}</p>` : '';
+  return `<div class="need-list">${rows}</div>${note}`;
+}
+function progressChart(c) {
+  const pts = c.model.completed.filter(a => a.max > 0).sort(byDate);
+  if (!pts.length) return `<div class="empty small">Add completed assessments to see the trend over time.</div>`;
+  const W = 640, H = 230, L = 38, R = 18, T = 16, B = 34;
+  const x = i => pts.length === 1 ? L + (W - L - R) / 2 : L + i * (W - L - R) / (pts.length - 1);
+  const y = v => T + (100 - clamp(v, 0, 100)) * (H - T - B) / 100;
+  const tgt = c.target.min;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Percentage by assessment date">`;
+  for (const g of [0, 25, 50, 75, 100]) s += `<line class="grid-line" x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}"/><text x="${L - 6}" y="${y(g) + 4}" text-anchor="end" class="lbl">${g}</text>`;
+  if (tgt != null) s += `<line class="target" x1="${L}" x2="${W - R}" y1="${y(tgt)}" y2="${y(tgt)}"/><text x="${W - R}" y="${y(tgt) - 5}" text-anchor="end" class="lbl target">${esc(c.target.name)} ${fmtPct(tgt)}</text>`;
+  const path = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.pct).toFixed(1)}`).join(' ');
+  if (pts.length > 1) s += `<path class="area" d="${path} L${x(pts.length - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z"/><path class="line" d="${path}"/>`;
+  const every = Math.ceil(pts.length / 6);
+  pts.forEach((p, i) => {
+    s += `<circle class="pt ${i === pts.length - 1 ? 'last' : ''}" cx="${x(i).toFixed(1)}" cy="${y(p.pct).toFixed(1)}" r="4.5"><title>${esc(p.name)} · ${fmtDate(p.date)} · ${fmtPct(p.pct)}</title></circle>`;
+    s += `<text x="${x(i).toFixed(1)}" y="${y(p.pct) - 10}" text-anchor="middle" class="lbl" style="fill:var(--fg);font-weight:600">${fmtNum(p.pct, 0)}%</text>`;
+    if (i % every === 0 || i === pts.length - 1) s += `<text x="${x(i).toFixed(1)}" y="${H - 10}" text-anchor="${i === 0 && pts.length > 1 ? 'start' : i === pts.length - 1 && pts.length > 1 ? 'end' : 'middle'}" class="lbl">${esc(fmtShort(p.date))}</text>`;
+  });
+  return s + '</svg>';
+}
+function breakdown(c) {
+  const m = c.model, inc = m.completed.filter(a => a.included).sort(byDate);
+  if (!inc.length) return '<div class="empty small">No completed assessments counted yet.</div>';
+  const unit = m.mode === 'weighted' ? '%' : ' marks';
+  const rows = inc.map(a => `<div class="r"><span class="n">${esc(a.name)}</span><span>${fmtPct(a.pct)}</span><span class="x">× ${fmtNum(a.w)}${unit}</span><span>= ${fmtNum(a.contribution / 100, 2)}</span></div>`).join('');
+  const total = `<div class="r"><span class="n">Total ÷ ${fmtNum(m.Wc)}${unit}</span><span></span><span class="x">${fmtNum(m.sumC / 100, 2)} ÷ ${fmtNum(m.Wc)}</span><span>= ${fmtPct(m.current, 2)}</span></div>`;
+  const note = m.mode === 'weighted'
+    ? `Each percentage is multiplied by its weightage, then divided by the completed weightage (${fmtNum(m.Wc)}%).`
+    : `Marks-based: ${fmtNum(m.marksObtained)} ÷ ${fmtNum(m.marksMax)} marks = ${fmtPct(m.current, 2)}. Each assessment counts in proportion to its maximum marks.`;
+  return `<div class="breakdown">${rows}${total}</div><p class="xs muted" style="margin-top:8px">${note}</p>`;
+}
+const overallChip = ov => `<span class="chip primary" title="${state.settings.overallMethod === 'weighted' ? 'Weighted by subject' : 'Simple average of subjects'}">Overall ${fmtPct(ov.value)}</span>`;
+
+/* ---------- Dashboard ---------- */
+function viewDashboard(all) {
+  const ov = overallInfo(all);
+  const ups = state.upcoming.filter(u => (daysUntil(u.date) ?? -1) >= 0).sort(byDate).slice(0, 6);
+  const hasData = state.assessments.length || state.upcoming.length;
+  return `
+  <div class="page-head"><div><div class="eyebrow">${esc(fmtDate(todayISO()))}</div><h1>Dashboard</h1></div>
+    <div class="actions">${overallChip(ov)}<button class="btn" data-action="add-assessment">${icon('plus')}Result</button><button class="btn primary" data-action="add-upcoming">${icon('plus')}Upcoming test</button></div></div>
+  ${storageOK ? '' : `<div class="notice">Browser storage is unavailable here, so changes will not survive a refresh. Use Export in Settings to keep a backup.</div>`}
+  ${hasData ? '' : `<div class="card hint-card"><div><h2>Start with one subject</h2><p class="muted" style="margin-top:4px">Open a subject, add the tests you have already done, then add the upcoming ones with their weightage. It works out what you need for A*.</p></div><button class="btn sm" data-action="load-demo">See it with sample data</button></div>`}
+  <div class="grid auto">${all.map(subjectCard).join('')}${state.subjects.length < MAX_SUBJECTS ? `<button class="card clickable empty" data-action="add-subject" style="border-style:dashed">${icon('plus')} Add subject</button>` : ''}</div>
+  ${ups.length ? `<div class="card"><div class="section-head"><h2>Coming up</h2><button class="btn sm ghost" data-action="nav" data-view="upcoming">All upcoming tests ${icon('right')}</button></div>
+    <div class="list">${ups.map(u => { const c = all.find(x => x.subject.id === u.subjectId); return `<div class="list-row" data-action="open-event" data-id="${u.id}" role="button" tabindex="0"><span class="swatch" style="background:${color(c.subject)}"></span><div class="when"><div class="strong tnum">${esc(fmtShort(u.date))}</div><div class="xs muted">${esc(relDays(u.date))}</div></div><div class="txt"><div class="strong">${esc(u.name)}</div><div class="xs muted">${esc(c.subject.name)} · /${fmtNum(u.max)} marks${u.weight != null ? ` · ${fmtNum(u.weight)}%` : ''}</div></div><div class="r">${requiredCell(c, u)}</div></div>`; }).join('')}</div></div>` : ''}`;
+}
+function subjectCard(c) {
+  const { subject: s, model, target, analysis: a } = c; const st = statusInfo(c);
+  const nx = a.next;
+  const nxLine = nx ? (a.perTest.length > 1 ? `Need ${fmtPct(Math.max(0, a.required))} on each remaining test · ${esc(nx.name)} ${nx.marks}/${fmtNum(nx.max)}` : `Need ${nx.marks}/${fmtNum(nx.max)} (${fmtPct(Math.max(0, nx.pct))}) on ${esc(nx.name)} for ${esc(target.name)}`) : null;
+  const line = a.status === 'empty' ? 'No results yet' : a.status === 'needs' ? (nxLine || `Need ${fmtPct(a.required)} average on upcoming tests for ${esc(target.name)}`) : a.status === 'on_track' ? (nxLine || `On track for ${esc(target.name)}`) : a.status === 'secured' ? `${esc(target.name)} secured` : a.status === 'impossible' ? `${esc(target.name)} out of reach · best ${fmtPct(a.maxPossible)}` : a.status === 'missed' ? `Finished below ${esc(target.name)}` : st.short;
+  return `<div class="card subject-card clickable" data-action="open-subject" data-id="${s.id}" role="button" tabindex="0">
+    <div class="head"><div class="title"><span class="dot" style="background:${color(s)}"></span><h3>${esc(s.name)}</h3></div>${s.code ? `<span class="xs muted">${esc(s.code)}</span>` : ''}</div>
+    <div class="row between"><span class="pct">${fmtPct(model.current)}</span>${model.current != null ? gradeChip(model.grade, target.name) : ''}</div>
+    ${progressBar(model.current, target.min, fillClass(c))}
+    <div class="bar-labels"><span>${esc(target.name)} at ${fmtPct(target.min)}</span><span>${c.next ? `Next ${esc(fmtShort(c.next.date))}` : ''}</span></div>
+    <div class="need small" style="color:var(--${st.kind === 'neutral' ? 'muted' : st.kind})">${line}</div></div>`;
+}
+
+/* ---------- Subjects ---------- */
+function viewSubjects(all) {
+  return `<div class="page-head"><div><div class="eyebrow">${state.subjects.length} of ${MAX_SUBJECTS}</div><h1>Subjects</h1></div>
+    <div class="actions"><button class="btn primary" data-action="add-subject" ${state.subjects.length >= MAX_SUBJECTS ? 'disabled title="Maximum of 10 subjects"' : ''}>${icon('plus')}Add subject</button></div></div>
+  ${all.length ? `<div class="grid auto">${all.map(subjectCard).join('')}</div>` : `<div class="empty">No subjects yet.<br><button class="btn primary" data-action="add-subject">Add your first subject</button></div>`}`;
+}
+
+function viewSubject(all) {
+  const c = all.find(x => x.subject.id === ui.subjectId);
+  if (!c) { ui.view = 'subjects'; return viewSubjects(all); }
+  const { subject: s, model: m, target, analysis: a } = c; const st = statusInfo(c);
+  const completed = [...m.completed].sort(byDateDesc), upcoming = [...m.upcoming].sort(byDate);
+  const grades = Engine.sortedGrades(s.grades);
+  return `
+  <div><button class="btn ghost sm" data-action="nav" data-view="subjects">${icon('left')}All subjects</button></div>
+  <div class="page-head"><div class="row" style="gap:12px"><span class="dot" style="background:${color(s)};width:14px;height:14px"></span><div>${s.code && s.code.toLowerCase() !== s.name.toLowerCase() ? `<div class="eyebrow">${esc(s.code)}</div>` : ''}<h1>${esc(s.name)}</h1></div></div>
+    <div class="actions"><button class="btn" data-action="edit-subject" data-id="${s.id}">${icon('edit')}Rename</button><button class="btn danger" data-action="delete-subject" data-id="${s.id}">${icon('trash')}Delete</button></div></div>
+
+  <div class="card overview">
+    <div class="ov-grid">
+      <div><div class="label">Current</div><div class="row" style="gap:10px"><span class="big">${fmtPct(m.current)}</span>${m.current != null ? gradeChip(m.grade, target.name) : ''}</div><div class="xs muted">${m.current == null ? 'No results yet' : m.mode === 'weighted' ? `Weighted · ${fmtNum(m.Wc)}% of the course done` : `Marks-based · ${fmtNum(m.marksObtained)} / ${fmtNum(m.marksMax)} marks`}</div></div>
+      <div><div class="label">Target</div><div class="row" style="gap:10px"><span class="big">${esc(target.name)}</span><span class="muted">from ${fmtPct(target.min)}</span></div><div class="xs muted">${a.distance == null ? '' : a.distance > 0 ? `${fmtPct(a.distance)} below the boundary` : `${fmtPct(-a.distance)} above the boundary`}</div></div>
+    </div>
+    ${progressBar(m.current, target.min, fillClass(c))}<div class="bar-labels"><span>${fmtPct(m.current)}</span><span>${esc(target.name)} ${fmtPct(target.min)}</span></div>
+    <div style="margin-top:14px">${statusLine(c)}</div>
+    ${['needs', 'on_track'].includes(a.status) ? `<div class="stack" style="margin-top:14px"><div class="label">What you need on the remaining tests</div>${neededRows(c)}</div>` : ''}
+  </div>
+
+  <div class="card"><div class="section-head"><h2>Upcoming tests</h2><button class="btn sm primary" data-action="add-upcoming" data-subject="${s.id}">${icon('plus')}Add upcoming test</button></div>
+    ${upcoming.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Test</th><th>Date</th><th class="r">Marks</th><th class="r">Weightage</th><th class="r">Need for ${esc(target.name)}</th><th></th></tr></thead><tbody>
+      ${upcoming.map(u => `<tr><td><div class="strong">${esc(u.name)}</div>${u.target ? `<div class="xs muted">Target ${esc(u.target)}</div>` : ''}${u.notes ? `<div class="xs muted">${esc(u.notes)}</div>` : ''}</td><td class="tnum">${esc(fmtDate(u.date))}<div class="xs muted">${esc(relDays(u.date))}</div></td><td class="r num">/${fmtNum(u.max)}</td><td class="r num">${u.weight != null ? fmtNum(u.weight) + '%' : (m.mode === 'weighted' ? '<span class="chip warn">None</span>' : '<span class="muted">—</span>')}</td><td class="r">${requiredCell(c, u)}</td><td><div class="acts"><button class="btn sm ghost" data-action="record-result" data-id="${u.id}">Record result</button><button class="btn icon ghost" data-action="edit-upcoming" data-id="${u.id}" title="Edit">${icon('edit')}</button><button class="btn icon ghost danger" data-action="delete-upcoming" data-id="${u.id}" title="Delete">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>` : `<div class="empty small">No upcoming tests yet. Add one with its weightage to see what you need.</div>`}
+    ${m.mode === 'weighted' ? `<div style="margin-top:12px">${weightLine(c)}</div>` : ''}</div>
+
+  <div class="card"><div class="section-head"><h2>Completed</h2><button class="btn sm" data-action="add-assessment" data-subject="${s.id}">${icon('plus')}Add result</button></div>
+    ${completed.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Assessment</th><th>Date</th><th>Type</th><th class="r">Marks</th><th class="r">%</th><th class="r">Weightage</th><th></th></tr></thead><tbody>
+      ${completed.map(x => `<tr><td><div class="strong">${esc(x.name)}</div>${x.notes ? `<div class="xs muted">${esc(x.notes)}</div>` : ''}</td><td class="tnum">${esc(fmtDate(x.date))}</td><td><span class="chip">${esc(x.type)}</span></td><td class="r num">${fmtNum(x.obtained)}/${fmtNum(x.max)}</td><td class="r num strong">${fmtPct(x.pct)}</td><td class="r num">${m.mode === 'weighted' ? (x.included ? fmtNum(x.w) + '%' : `<span class="chip warn" title="No weightage: left out of the weighted percentage">Left out</span>`) : '<span class="muted">—</span>'}</td><td><div class="acts"><button class="btn icon ghost" data-action="edit-assessment" data-id="${x.id}" title="Edit">${icon('edit')}</button><button class="btn icon ghost danger" data-action="delete-assessment" data-id="${x.id}" title="Delete">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>` : `<div class="empty small">No results yet.</div>`}</div>
+
+  <div class="card"><div class="section-head"><h2>Grade boundaries</h2><span class="muted small">Only for ${esc(s.name)}</span></div>
+    <form class="form" data-form="boundaries" data-id="${s.id}">
+      <div class="gb-wrap">${gbEditorHTML(grades, 'sub-gb')}
+        <div class="field" style="max-width:220px"><label for="subj-target">Target grade</label><select id="subj-target" name="target">${grades.map(g => `<option value="${esc(g.name)}" ${g.name === target.name ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select><span class="help">A grade applies from its minimum % upwards.</span></div></div>
+      <div class="form-error" id="form-error"></div>
+      <div class="row"><button class="btn primary" type="submit">Save boundaries</button></div></form></div>
+
+  <details class="card details"><summary><h2>Progress graph</h2><span class="muted small">Percentage by assessment date</span></summary><div class="details-body">${progressChart(c)}</div></details>
+  <details class="card details"><summary><h2>How ${fmtPct(m.current)} is calculated</h2></summary><div class="details-body stack">${breakdown(c)}${weightLine(c)}
+    <div class="row"><label class="small muted" for="mode-${s.id}">Calculation mode</label><select id="mode-${s.id}" class="input" style="width:auto" data-change="subject-mode" data-id="${s.id}"><option value="auto" ${s.mode === 'auto' ? 'selected' : ''}>Auto-detect (${m.mode === 'weighted' ? 'weighted' : 'marks-based'})</option><option value="weighted" ${s.mode === 'weighted' ? 'selected' : ''}>Weighted</option><option value="marks" ${s.mode === 'marks' ? 'selected' : ''}>Marks-based</option></select></div></div></details>`;
+}
+
+/* ---------- Assessments ---------- */
+function viewAssessments(all) {
+  const f = ui.assessFilter;
+  const list = state.assessments.filter(a => f === 'all' || a.subjectId === f).sort(byDateDesc);
+  return `<div class="page-head"><div><div class="eyebrow">${state.assessments.length} recorded</div><h1>Assessments</h1></div>
+    <div class="actions"><button class="btn primary" data-action="add-assessment">${icon('plus')}Add result</button></div></div>
+  ${subjectChips(f, 'filter-assess')}
+  <div class="card">${list.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Date</th><th>Subject</th><th>Assessment</th><th>Type</th><th class="r">Marks</th><th class="r">%</th><th class="r">Weightage</th><th></th></tr></thead><tbody>
+    ${list.map(a => { const s = subjectById(a.subjectId); const p = Engine.pct(a.obtained, a.max); return `<tr><td class="tnum">${esc(fmtDate(a.date))}</td><td><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="dot" style="background:${color(s)}"></span>${esc(s.name)}</span></td><td><div class="strong">${esc(a.name)}</div>${a.notes ? `<div class="xs muted">${esc(a.notes)}</div>` : ''}</td><td><span class="chip">${esc(a.type)}</span></td><td class="r num">${fmtNum(a.obtained)}/${fmtNum(a.max)}</td><td class="r num strong">${fmtPct(p)}</td><td class="r num">${a.weight != null ? fmtNum(a.weight) + '%' : '<span class="muted">—</span>'}</td><td><div class="acts"><button class="btn icon ghost" data-action="edit-assessment" data-id="${a.id}" title="Edit">${icon('edit')}</button><button class="btn icon ghost danger" data-action="delete-assessment" data-id="${a.id}" title="Delete">${icon('trash')}</button></div></td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty">No results${f !== 'all' ? ' for this subject' : ''} yet.<br><button class="btn primary" data-action="add-assessment">Add one</button></div>`}</div>`;
+}
+
+/* ---------- Upcoming ---------- */
+function viewUpcoming(all) {
+  const f = ui.upFilter, { key, dir } = ui.upSort;
+  const rows = state.upcoming.filter(u => f === 'all' || u.subjectId === f).map(u => {
+    const c = all.find(x => x.subject.id === u.subjectId); const { tgt, a, pt } = testAnalysis(c, u);
+    return { u, c, tgt, a, pt, needed: pt && pt.pct != null ? pt.pct : (a.status === 'secured' ? -1 : 999) };
+  });
+  const cmp = { date: (a, b) => byDate(a.u, b.u), subject: (a, b) => a.c.subject.name.localeCompare(b.c.subject.name), name: (a, b) => a.u.name.localeCompare(b.u.name), weight: (a, b) => (a.u.weight ?? -1) - (b.u.weight ?? -1), max: (a, b) => a.u.max - b.u.max, needed: (a, b) => a.needed - b.needed }[key] || byDate;
+  rows.sort((a, b) => cmp(a, b) * dir);
+  const th = (k, label, cls = '') => `<th class="sortable ${cls}" data-action="sort-upcoming" data-key="${k}">${label}${key === k ? (dir > 0 ? ' ↑' : ' ↓') : ''}</th>`;
+  return `<div class="page-head"><div><div class="eyebrow">${state.upcoming.length} scheduled</div><h1>Upcoming Tests</h1></div>
+    <div class="actions"><button class="btn primary" data-action="add-upcoming">${icon('plus')}Add upcoming test</button></div></div>
+  ${subjectChips(f, 'filter-upcoming')}
+  <div class="card">${rows.length ? `<div class="table-wrap"><table class="t"><thead><tr>${th('date', 'Date')}${th('subject', 'Subject')}${th('name', 'Test')}${th('weight', 'Weightage', 'r')}${th('max', 'Marks', 'r')}${th('needed', 'Need for target', 'r')}<th></th></tr></thead><tbody>
+    ${rows.map(({ u, c, tgt }) => { const dn = daysUntil(u.date); return `<tr><td class="tnum"><div>${esc(fmtDate(u.date))}</div><div class="xs" style="color:var(--${dn != null && dn < 0 ? 'bad' : 'muted'})">${dn != null && dn < 0 ? 'Past · record the result' : esc(relDays(u.date))}</div></td><td><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="dot" style="background:${color(c.subject)}"></span>${esc(c.subject.name)}</span></td><td><div class="strong">${esc(u.name)}</div><div class="xs muted">Target ${esc(tgt.name)}${u.expected != null ? ` · expecting ${fmtPct(u.expected)}` : ''}</div></td><td class="r num">${u.weight != null ? fmtNum(u.weight) + '%' : (c.model.mode === 'marks' ? '<span class="muted">—</span>' : '<span class="chip warn">None</span>')}</td><td class="r num">/${fmtNum(u.max)}</td><td class="r">${requiredCell(c, u)}</td><td><div class="acts"><button class="btn sm ghost" data-action="record-result" data-id="${u.id}">Record result</button><button class="btn icon ghost" data-action="edit-upcoming" data-id="${u.id}" title="Edit">${icon('edit')}</button><button class="btn icon ghost danger" data-action="delete-upcoming" data-id="${u.id}" title="Delete">${icon('trash')}</button></div></td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty">No upcoming tests${f !== 'all' ? ' for this subject' : ''}.<br><button class="btn primary" data-action="add-upcoming">Add one</button></div>`}</div>`;
+}
+
+/* ---------- Calendar ---------- */
+function viewCalendar(all) {
+  const { mode, cursor } = ui.cal; const cur = parseISO(cursor) || new Date();
+  const evByDate = {}; for (const u of state.upcoming) { if (!u.date) continue; (evByDate[u.date] = evByDate[u.date] || []).push(u); }
+  const ev = u => { const s = subjectById(u.subjectId); return `<button class="ev" style="background:${color(s)}" data-action="open-event" data-id="${u.id}" title="${esc(s.name)} — ${esc(u.name)}">${esc(s.name)} — ${esc(u.name)}</button>`; };
+  const t = todayISO();
+  let body = '', label = '';
+  if (mode === 'month') {
+    const first = new Date(cur.getFullYear(), cur.getMonth(), 1);
+    const startOffset = (first.getDay() + 6) % 7;
+    const start = new Date(first); start.setDate(1 - startOffset);
+    const daysInMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
+    const weeks = Math.ceil((startOffset + daysInMonth) / 7);
+    label = `${MONTHS_LONG[cur.getMonth()]} ${cur.getFullYear()}`;
+    let cells = '';
+    for (let i = 0; i < weeks * 7; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i); const k = iso(d);
+      const other = d.getMonth() !== cur.getMonth();
+      const evs = (evByDate[k] || []).sort((a, b) => a.name.localeCompare(b.name));
+      cells += `<div class="cal-cell ${other ? 'other' : ''} ${k === t ? 'today' : ''}"><span class="d">${d.getDate()}</span>${evs.map(ev).join('')}</div>`;
+    }
+    body = `<div class="cal-grid">${DOW.map(d => `<div class="cal-dow">${d}</div>`).join('')}${cells}</div>`;
+  } else if (mode === 'week') {
+    const start = new Date(cur); start.setDate(cur.getDate() - ((cur.getDay() + 6) % 7));
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    label = `${start.getDate()} ${MONTHS[start.getMonth()]} – ${end.getDate()} ${MONTHS[end.getMonth()]} ${end.getFullYear()}`;
+    let cells = '';
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i); const k = iso(d);
+      const evs = (evByDate[k] || []);
+      cells += `<div class="cal-cell ${k === t ? 'today' : ''}"><span class="d">${DOW[i]} ${d.getDate()} ${MONTHS[d.getMonth()]}</span>${evs.map(u => { const s = subjectById(u.subjectId); return `<button class="ev" style="background:${color(s)};white-space:normal" data-action="open-event" data-id="${u.id}">${esc(s.name)} — ${esc(u.name)}<br><span style="font-weight:400;opacity:.9">/${fmtNum(u.max)} marks${u.weight != null ? ` · ${fmtNum(u.weight)}%` : ''}</span></button>`; }).join('') || '<span class="xs faint">—</span>'}</div>`;
+    }
+    body = `<div class="cal-week">${cells}</div>`;
+  } else {
+    const list = state.upcoming.filter(u => u.date).sort(byDate);
+    label = 'All upcoming tests';
+    if (!list.length) body = '<div class="empty">No upcoming tests scheduled.</div>';
+    else {
+      let lastM = ''; body = '<div class="cal-list">';
+      for (const u of list) {
+        const d = parseISO(u.date); const mk = `${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`;
+        if (mk !== lastM) { body += `<h3 class="month-h">${mk}</h3>`; lastM = mk; }
+        const s = subjectById(u.subjectId); const c = all.find(x => x.subject.id === u.subjectId);
+        body += `<div class="item" data-action="open-event" data-id="${u.id}" role="button" tabindex="0"><div class="day" style="color:${color(s)}">${d.getDate()}</div><div class="txt"><div class="strong">${esc(s.name)} — ${esc(u.name)}</div><div class="small muted">${DOW[(d.getDay() + 6) % 7]} · /${fmtNum(u.max)} marks${u.weight != null ? ` · ${fmtNum(u.weight)}% weightage` : ''} · ${esc(relDays(u.date))}</div></div><div>${requiredCell(c, u)}</div></div>`;
+      }
+      body += '</div>';
+    }
+  }
+  return `<div class="page-head"><div><div class="eyebrow">Every upcoming test, automatically</div><h1>Calendar</h1></div><div class="actions"><button class="btn primary" data-action="add-upcoming">${icon('plus')}Add upcoming test</button></div></div>
+  <div class="card"><div class="cal-toolbar"><div class="seg">${['month', 'week', 'list'].map(m => `<button class="${mode === m ? 'active' : ''}" data-action="cal-mode" data-mode="${m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}</div>
+    <h2 style="font-size:1.1rem">${esc(label)}</h2>
+    <div class="row">${mode !== 'list' ? `<button class="btn icon" data-action="cal-nav" data-dir="-1" title="Previous">${icon('left')}</button><button class="btn sm" data-action="cal-today">Today</button><button class="btn icon" data-action="cal-nav" data-dir="1" title="Next">${icon('right')}</button>` : ''}</div></div>
+    <div style="margin-top:14px">${body}</div>
+    <div class="legend" style="margin-top:14px">${state.subjects.map(s => `<span><span class="dot" style="background:${color(s)}"></span>${esc(s.name)}</span>`).join('')}</div></div>`;
+}
+
+/* ---------- A* Calculator ---------- */
+function viewCalc(all) {
+  if (!all.length) return `<div class="page-head"><h1>A* Calculator</h1></div><div class="empty">Add a subject first.</div>`;
+  if (!ui.calc.subjectId || !subjectById(ui.calc.subjectId)) ui.calc.subjectId = (all.find(c => c.model.upcoming.length) || all[0]).subject.id;
+  const c = all.find(x => x.subject.id === ui.calc.subjectId);
+  const { subject: s, model: m, target, analysis: a } = c; const st = statusInfo(c);
+  const ups = m.upcoming.filter(u => u.included);
+  if (!ui.calc.testId || !ups.find(u => u.id === ui.calc.testId)) { ui.calc.testId = ups[0] ? ups[0].id : null; ui.calc.marks = null; }
+  const nx = a.next; const nt = nx ? needText(nx, c) : null;
+  const headline = nx && ['needs', 'on_track'].includes(a.status) ? `<div class="big" style="color:var(--${nt.kind})">${fmtPct(Math.max(0, a.required))}</div><p class="muted small" style="margin:6px 0 0">${ups.length > 1 ? `on every remaining test (weighted by weightage) to finish at ${esc(target.name)}. Next: <b>${esc(nx.name)}</b> ${nx.marks}/${fmtNum(nx.max)}` : `on <b>${esc(nx.name)}</b> (${nx.marks}/${fmtNum(nx.max)}) to finish at ${esc(target.name)}`}</p>`
+    : a.status === 'impossible' ? `<div class="big" style="color:var(--bad)">${fmtPct(a.maxPossible)}</div><p class="muted small" style="margin:6px 0 0">is the highest final percentage still possible</p>`
+    : a.status === 'secured' ? `<div class="big" style="color:var(--good)">${fmtPct(a.minPossible)}</div><p class="muted small" style="margin:6px 0 0">is the lowest final percentage possible, already above ${fmtPct(target.min)}</p>`
+    : `<div class="big muted">—</div>`;
+  return `<div class="page-head"><div><div class="eyebrow">How much do I need?</div><h1>A* Calculator</h1></div></div>
+  ${subjectChips(s.id, 'calc-subject', false)}
+  <div class="grid cols-2">
+    <div class="card"><div class="label">Now</div>
+      <div class="row" style="gap:10px;margin-top:4px"><span class="big">${fmtPct(m.current)}</span>${m.current != null ? gradeChip(m.grade, target.name) : ''}</div>
+      <div class="xs muted" style="margin-top:4px">${m.mode === 'weighted' ? `${fmtNum(m.Wc)}% of the course completed · ${fmtNum(m.Wu)}% still to come` : `${fmtNum(m.marksMax)} marks completed · ${fmtNum(m.Wu)} marks still to come`}</div>
+      ${progressBar(m.current, target.min, fillClass(c))}<div class="bar-labels"><span>${fmtPct(m.current)}</span><span>${esc(target.name)} ${fmtPct(target.min)}</span></div></div>
+    <div class="card"><div class="label">Needed for ${esc(target.name)}</div>${headline}
+      <div style="margin-top:12px">${statusLine(c)}</div>
+      ${a.perTest.length ? `<div style="margin-top:12px">${neededRows(c)}</div>` : `<p class="muted small" style="margin-top:10px">No upcoming tests for ${esc(s.name)}. <button class="btn sm" data-action="add-upcoming" data-subject="${s.id}">Add one</button></p>`}</div>
+  </div>
+  <div class="card"><div class="section-head"><h2>What if?</h2><span class="muted small">Try a score and see the result instantly</span></div>
+    ${ups.length ? `<div class="form" style="margin-bottom:14px;max-width:460px"><div class="field"><label for="wi-test">Upcoming test</label><select id="wi-test" class="input" data-change="calc-test">${ups.map(u => `<option value="${u.id}" ${u.id === ui.calc.testId ? 'selected' : ''}>${esc(u.name)} · ${esc(fmtShort(u.date))} · /${fmtNum(u.max)}${m.mode === 'weighted' ? ` · ${fmtNum(u.w)}%` : ''}</option>`).join('')}</select></div></div>
+      <div id="whatif-panel">${whatIfPanel(c)}</div>` : `<div class="empty small">Add an upcoming test for ${esc(s.name)} to try scores.</div>`}
+  </div>
+  <details class="card details"><summary><h2>Target planner</h2><span class="muted small">Set a target for every subject</span></summary><div class="details-body">
+    <div class="table-wrap"><table class="t"><thead><tr><th>Subject</th><th>Target</th><th class="r">Current</th><th class="r">Boundary</th><th>Needs</th></tr></thead><tbody>
+    ${all.map(x => { const sx = statusInfo(x); const gs = Engine.sortedGrades(x.subject.grades); return `<tr><td><span class="row" style="gap:6px;flex-wrap:nowrap"><span class="dot" style="background:${color(x.subject)}"></span><b>${esc(x.subject.name)}</b></span></td><td><select class="input" style="width:auto;padding:5px 8px" data-change="subject-target" data-id="${x.subject.id}">${gs.map(g => `<option value="${esc(g.name)}" ${g.name === x.target.name ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></td><td class="r num">${fmtPct(x.model.current)}</td><td class="r num">${fmtPct(x.target.min)}</td><td><span class="chip ${sx.kind}">${esc(sx.short)}</span> <span class="small muted">${x.analysis.perTest.length && ['needs', 'on_track'].includes(x.analysis.status) ? (() => { const n = x.analysis.next; return `${fmtPct(Math.max(0, x.analysis.required))} on each remaining test · next ${esc(n.name)} ${n.marks}/${fmtNum(n.max)}`; })() : ''}</span></td></tr>`; }).join('')}</tbody></table></div></div></details>`;
+}
+function whatIfCtx(c) {
+  const ctx = Engine.whatIfContext(c.model, c.target.min, ui.calc.testId);
+  if (!ctx) return null;
+  const max = ctx.test.max;
+  if (ui.calc.marks == null || ui.calc.marks > max) ui.calc.marks = ctx.planMarks != null ? clamp(ctx.planMarks, 0, max) : Math.round(max * 0.8);
+  return ctx;
+}
+function whatIfPanel(c) {
+  const { target } = c; const ctx = whatIfCtx(c);
+  if (!ctx) return '';
+  const max = ctx.test.max, marks = ui.calc.marks;
+  const plan = ctx.planPct == null ? '' : ctx.secured ? `<span class="chip good">${esc(target.name)} already secured</span>` : !ctx.achievable ? `<span class="chip bad">${esc(target.name)} not achievable (needs ${fmtPct(ctx.planPct)} on the rest)</span>` : `<span class="chip good">Plan: ${ctx.planMarks}/${fmtNum(max)} (${fmtPct(ctx.planPct)}) here${ctx.restW > 1e-9 ? ` and ${fmtPct(ctx.planPct)} on every other remaining test` : ''}</span>`;
+  return `<div class="whatif-result">
+    <div class="card pad-s soft"><div class="label">If I score</div>
+      <div class="range-row" style="margin-top:8px"><div class="inline-num"><input id="wi-marks" type="number" min="0" max="${max}" step="1" value="${marks}" data-live="calc-marks" aria-label="Hypothetical marks"><span class="muted">/ ${fmtNum(max)}</span></div><span class="chip" id="wi-pct">${fmtPct(Engine.pct(marks, max))}</span></div>
+      <input id="wi-slider" class="slider" type="range" min="0" max="${max}" step="1" value="${marks}" data-live="calc-marks" aria-label="Hypothetical marks slider" style="margin-top:10px">
+      <div class="xs muted" style="margin-top:6px">${plan}</div></div>
+    <div id="whatif-out" style="display:contents">${whatIfOut(c, ctx)}</div>
+  </div>`;
+}
+function whatIfOut(c, ctx) {
+  const { target } = c; const max = ctx.test.max, marks = ui.calc.marks;
+  const after = ctx.afterFor(marks), rest = ctx.needRestFor(marks), ok = ctx.finalOK(marks);
+  const g = Engine.gradeFor(after, c.subject.grades);
+  const rows = Engine.whatIfRows(ctx, marks);
+  const multi = ctx.restW > 1e-9;
+  const restKind = !multi ? '' : rest <= 1e-9 ? 'good' : rest <= (c.model.current ?? 0) + 1e-9 ? 'good' : rest <= 100 + 1e-9 ? 'warn' : 'bad';
+  const card = multi
+    ? `<div class="card pad-s soft"><div class="label">Then, on the remaining tests</div>
+        <div class="row" style="margin-top:8px;gap:12px"><span class="big" style="color:var(--${restKind === 'warn' ? 'fg' : restKind})">${rest <= 1e-9 ? 'Any score' : fmtPct(rest)}</span></div>
+        <div class="xs muted" style="margin-top:6px">${rest > 100 + 1e-9 ? `needed on average, so ${esc(target.name)} would be out of reach` : rest <= 1e-9 ? `keeps ${esc(target.name)}` : `average needed on the other remaining tests (weighted) to finish at ${esc(target.name)}`}. You would be at ${fmtPct(after)} right after this test.</div></div>`
+    : `<div class="card pad-s soft"><div class="label">Final percentage</div>
+        <div class="row" style="margin-top:8px;gap:12px"><span class="big" style="color:var(--${ok ? 'good' : 'fg'})">${fmtPct(after)}</span>${gradeChip(g, target.name)}</div>
+        <div class="xs muted" style="margin-top:6px">${ok ? `At or above the ${esc(target.name)} boundary (${fmtPct(target.min)})` : `${fmtPct(target.min - after)} short of ${esc(target.name)}`}</div></div>`;
+  return `${card}
+  <div class="table-wrap" style="grid-column:1 / -1"><table class="t"><thead><tr><th>Score</th><th class="r">Test %</th><th class="r">${multi ? '% after this test' : 'Final %'}</th>${multi ? '<th class="r">Needed on the rest</th>' : '<th>Grade</th>'}</tr></thead><tbody>
+    ${rows.map(r => `<tr class="${r.isPlan ? 'hl' : ''} ${r.isCustom && !r.isPlan ? 'custom' : ''}"><td class="num">${r.marks}/${fmtNum(max)}${r.isPlan ? ' <span class="chip good">Plan</span>' : r.isCustom ? ' <span class="chip primary">Your input</span>' : ''}</td><td class="r num">${fmtPct(r.pct)}</td><td class="r num strong">${fmtPct(r.after)}</td>${multi ? `<td class="r num strong" style="color:var(--${r.needRest > 100 + 1e-9 ? 'bad' : r.needRest <= 1e-9 ? 'good' : 'fg'})">${r.needRest <= 1e-9 ? 'Any' : fmtPct(r.needRest)}${r.needRest > 100 + 1e-9 ? ' ✕' : ''}</td>` : `<td>${gradeChip(Engine.gradeFor(r.after, c.subject.grades), target.name, 'xs')}</td>`}</tr>`).join('')}</tbody></table></div>`;
+}
+
+/* ---------- Predictions ---------- */
+function viewPredictions(all) {
+  const withUp = all.filter(c => c.model.upcoming.some(u => u.included));
+  const assumption = state.settings.predAssumption || 'current';
+  const preds = all.map(c => ({ c, p: Engine.predict(c.model, c.target.min, assumption) }));
+  const ov = Engine.overall(preds.map(({ c, p }) => ({ subject: c.subject, value: p.final })), state.settings.overallMethod);
+  const ovNow = overallInfo(all);
+  return `<div class="page-head"><div><div class="eyebrow">Enter the scores you expect</div><h1>Predictions</h1></div>
+    <div class="actions"><div class="field"><label for="pred-assume">Tests without a prediction</label><select id="pred-assume" class="input" data-change="pred-assumption"><option value="current" ${assumption === 'current' ? 'selected' : ''}>Assume current average</option><option value="target" ${assumption === 'target' ? 'selected' : ''}>Assume target boundary</option><option value="zero" ${assumption === 'zero' ? 'selected' : ''}>Assume 0%</option></select></div></div></div>
+  <div class="card row between"><div><div class="label">Predicted overall</div><div class="big" id="pred-overall">${fmtPct(ov.value)}</div></div><div class="small muted">${state.settings.overallMethod === 'weighted' ? 'Weighted by subject' : 'Simple average'} · currently ${fmtPct(ovNow.value)}</div></div>
+  ${withUp.length ? `<div class="grid cols-2">${withUp.map(c => predCard(c, assumption)).join('')}</div>` : '<div class="empty">Add upcoming tests to predict final grades.</div>'}`;
+}
+function predCard(c, assumption) {
+  const { subject: s, model: m, target } = c;
+  const ups = m.upcoming.filter(u => u.included).sort(byDate);
+  return `<div class="card" id="pred-${s.id}"><div class="section-head"><div class="row" style="gap:8px"><span class="dot" style="background:${color(s)}"></span><h2>${esc(s.name)}</h2></div><span class="muted small">Now ${fmtPct(m.current)} · target ${esc(target.name)} ${fmtPct(target.min)}</span></div>
+    <div>${ups.map(u => `<div class="pred-row"><div class="nm"><div class="strong">${esc(u.name)}</div><div class="xs muted">${esc(fmtShort(u.date))} · ${m.mode === 'weighted' ? fmtNum(u.w) + '%' : fmtNum(u.max) + ' marks'}</div></div>
+      <div class="inline-num"><input type="number" min="0" max="${u.max}" step="0.5" placeholder="marks" value="${u.expectedPct != null ? fmtNum(u.expectedPct / 100 * u.max, 1) : ''}" data-live="pred-marks" data-id="${u.id}" data-max="${u.max}" aria-label="Expected marks for ${esc(u.name)}"><span class="muted xs">/${fmtNum(u.max)}</span></div>
+      <div class="inline-num"><input type="number" min="0" max="100" step="0.1" placeholder="%" value="${u.expectedPct != null ? fmtNum(u.expectedPct, 1) : ''}" data-live="pred-pct" data-id="${u.id}" data-max="${u.max}" aria-label="Expected percentage for ${esc(u.name)}"><span class="muted xs">%</span></div>
+      <button class="btn icon ghost" data-action="pred-clear" data-id="${u.id}" title="Clear prediction">${icon('x')}</button></div>`).join('')}</div>
+    <div id="pred-result-${s.id}" style="margin-top:12px">${predResult(c, assumption)}</div></div>`;
+}
+function predResult(c, assumption) {
+  const { model: m, target } = c; const p = Engine.predict(m, target.min, assumption);
+  const ok = p.final != null && target.min != null && p.final >= target.min - 1e-9;
+  const fillNote = p.unpredictedW > 0 ? `<div class="xs muted" style="margin-top:6px">${m.mode === 'weighted' ? fmtNum(p.unpredictedW) + '% of weightage' : fmtNum(p.unpredictedW) + ' marks'} without a prediction assumed at ${fmtPct(p.fill)}${p.requiredRest != null && !ok ? ` · you would need ${fmtPct(p.requiredRest)} on those to reach ${esc(target.name)}` : ''}.</div>` : '';
+  return `<div class="row between soft" style="padding:12px 14px;border-radius:12px;${ok ? 'background:var(--good-soft)' : ''}"><div><div class="label">Predicted final</div><div class="row" style="gap:10px"><span class="big" style="font-size:1.8rem;color:var(--${ok ? 'good' : 'fg'})">${fmtPct(p.final)}</span>${gradeChip(p.grade, target.name)}</div></div><div class="small" style="color:var(--${ok ? 'good' : 'muted'})">${ok ? `Reaches ${esc(target.name)}` : `${fmtPct(target.min - (p.final ?? 0))} short of ${esc(target.name)}`}</div></div>${fillNote}`;
+}
+
+/* ---------- Settings ---------- */
+function viewSettings(all) {
+  const th = state.settings.theme, om = state.settings.overallMethod;
+  const W = state.subjects.reduce((a, s) => a + (s.weight > 0 ? s.weight : 0), 0);
+  return `<div class="page-head"><div><div class="eyebrow">Preferences & data</div><h1>Settings</h1></div></div>
+  <div class="grid cols-2">
+    <div class="card"><h2>Appearance</h2><p class="muted small" style="margin:4px 0 12px">Dark mode follows your device unless you choose one.</p>
+      <div class="seg">${[['system', 'System'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<button class="${th === v ? 'active' : ''}" data-action="set-theme" data-value="${v}">${l}</button>`).join('')}</div></div>
+    <div class="card"><h2>Overall percentage</h2><p class="muted small" style="margin:4px 0 12px">How the overall figure across subjects is worked out.</p>
+      <div class="seg" style="margin-bottom:12px">${[['simple', 'Simple average'], ['weighted', 'Weighted subjects']].map(([v, l]) => `<button class="${om === v ? 'active' : ''}" data-action="set-overall" data-value="${v}">${l}</button>`).join('')}</div>
+      ${om === 'weighted' ? `<div class="stack" style="gap:6px">${state.subjects.map(s => `<div class="row between"><span class="row" style="gap:6px"><span class="dot" style="background:${color(s)}"></span>${esc(s.name)}</span><div class="inline-num"><input type="number" min="0" max="100" step="0.5" value="${s.weight ?? ''}" placeholder="0" data-live="subject-weight" data-id="${s.id}" aria-label="Weight for ${esc(s.name)}"><span class="muted">%</span></div></div>`).join('')}<div id="weights-sum" class="small" style="margin-top:6px">${weightsSumText(W)}</div></div>` : '<p class="small muted">Every subject counts equally.</p>'}</div>
+  </div>
+  ${typeof accountCard === 'function' ? accountCard() : ''}
+  <div class="card"><h2>Data</h2><p class="muted small" style="margin:4px 0 12px">Everything is saved automatically in this browser${storageOK ? '' : ' (storage is currently unavailable)'}. Export a backup to move it to another device.</p>
+    <div class="row"><button class="btn" data-action="export">${icon('download')}Export</button><button class="btn" data-action="import">${icon('upload')}Import</button><button class="btn" data-action="load-demo">Load sample data</button><button class="btn" data-action="start-wizard">Set up subjects again</button><button class="btn danger" data-action="reset">${icon('trash')}Reset</button></div>
+    <p class="xs muted" style="margin-top:10px">${state.subjects.length} subjects · ${state.assessments.length} results · ${state.upcoming.length} upcoming tests</p></div>
+  <details class="card details"><summary><h2>How the calculations work</h2></summary><div class="details-body stack small" style="color:var(--muted)">
+      <p><b style="color:var(--fg)">Percentage</b> = marks obtained ÷ maximum marks × 100.</p>
+      <p><b style="color:var(--fg)">Subject percentage</b> = Σ (assessment % × weightage) ÷ Σ weightage of completed assessments. A subject switches to weighted mode as soon as any of its assessments has a weightage; assessments without one are then left out and flagged. With no weightages at all it is marks-based: total marks obtained ÷ total maximum marks.</p>
+      <p><b style="color:var(--fg)">Needed on the remaining tests</b> = (target boundary × total weightage − Σ completed contributions) ÷ remaining weightage. That percentage, scored on every remaining test, finishes the course at the target; each test's weightage is respected because the subject percentage weights each test by it. The marks shown for a test are that percentage of its maximum, rounded up to a whole mark. The next test by date is listed first. Above 100% means the target is not achievable (the best possible final is shown instead); at or below 0% means it is already secured.</p>
+      <p><b style="color:var(--fg)">Grades</b> use each subject's own boundaries: the highest grade whose minimum is at or below the percentage.</p>
+    </div></details>`;
+}
+const weightsSumText = W => Math.abs(W - 100) < 0.005 ? `<span style="color:var(--good)">Subject weightages add up to 100%.</span>` : `<span style="color:var(--warn)">Subject weightages add up to ${fmtNum(W)}%. The overall figure is normalised, but 100% keeps it easy to read.</span>`;
+
+/* ---------- Setup wizard ---------- */
+function viewSetup() {
+  const step = ui.setupStep || 1; const count = ui.setupCount || 10;
+  const presetOpts = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join('');
+  return `<div class="setup"><div class="card pop">
+    <div class="row between" style="margin-bottom:8px"><div class="brand"><div class="logo">A*</div><div><div class="name">A* Planner</div><div class="sub">Grade tracker</div></div></div><button class="btn sm ghost" data-action="load-demo">Try with sample data</button></div>
+    <div class="steps"><span class="s ${step === 1 ? 'active' : ''}">1 · How many subjects</span><span class="s ${step === 2 ? 'active' : ''}">2 · Names, grade systems & targets</span><span class="s">3 · Dashboard</span></div>
+    ${step === 1 ? `<h1>Let's set up your grades</h1><p class="muted" style="margin:8px 0 18px">You can add or remove subjects later, and every grade boundary stays editable per subject.</p>
+      <form class="form" data-form="setup-count"><div class="field" style="max-width:220px"><label for="setup-count">How many subjects?</label><input id="setup-count" name="count" type="number" min="1" max="${MAX_SUBJECTS}" value="${count}" required><span class="help">Up to ${MAX_SUBJECTS}</span></div><div><button class="btn primary" type="submit">Continue ${icon('right')}</button></div></form>`
+    : `<h1>Your subjects</h1><p class="muted" style="margin:8px 0 18px">Pick a grade system for each subject, then adjust the boundaries if yours differ. Leave a row blank to skip it.</p>
+      <form class="form" data-form="setup-finish"><div class="setup-rows">
+        <div class="setup-row head"><span></span><span>Subject name</span><span>Code</span><span>Grade system</span><span>Target</span><span></span></div>
+        ${Array.from({ length: count }, (_, i) => { const def = DEFAULT_SUBJECTS[i] || ['', '']; return `<div class="setup-row" data-row="${i}"><span class="idx">${i + 1}</span><input name="name-${i}" value="${esc(def[0])}" placeholder="e.g. Mathematics" aria-label="Subject ${i + 1} name" ${i === 0 ? 'required' : ''}><input name="code-${i}" value="${esc(def[1])}" placeholder="Optional" aria-label="Subject ${i + 1} code"><select name="preset-${i}" data-change="setup-preset" data-row="${i}" aria-label="Grade system">${presetOpts}</select><select name="target-${i}" aria-label="Target grade">${presetGrades('igcse').map(g => `<option value="${esc(g.name)}">${esc(g.name)}</option>`).join('')}</select><button type="button" class="btn sm" data-action="setup-toggle-gb" data-row="${i}">Boundaries</button></div>`; }).join('')}
+      </div><div class="row between" style="margin-top:18px"><button type="button" class="btn ghost" data-action="setup-back">${icon('left')}Back</button><button class="btn primary" type="submit">Finish setup ${icon('check')}</button></div></form>`}
+  </div></div>`;
+}
+function gbEditorHTML(grades, idPrefix = 'gb') {
+  const gs = grades.length ? grades : presetGrades('igcse');
+  return `<div class="gb-editor" id="${idPrefix}-editor"><div class="gb-row head"><span>Grade</span><span>Min %</span><span>Max %</span><span></span></div>
+    ${gs.map((g, i) => gbRowHTML(g, i)).join('')}
+    <div class="row" style="margin-top:6px"><button type="button" class="btn sm" data-action="gb-add" data-editor="${idPrefix}-editor">${icon('plus')}Add grade</button><select class="input" style="width:auto;padding:5px 8px" data-change="gb-preset" data-editor="${idPrefix}-editor" aria-label="Load preset"><option value="">Load preset…</option>${Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join('')}</select></div></div>`;
+}
+const gbRowHTML = (g, i) => `<div class="gb-row" data-gb-row><input value="${esc(g.name)}" placeholder="A*" aria-label="Grade name" data-live="gb-name"><input class="num" type="number" step="0.01" min="0" max="100" value="${g.min ?? ''}" placeholder="90" aria-label="Minimum percent" required><input class="num" type="number" step="0.01" min="0" max="100" value="${g.max ?? ''}" placeholder="100" aria-label="Maximum percent"><button type="button" class="btn icon ghost danger" data-action="gb-remove" title="Remove grade">${icon('x')}</button></div>`;
+function readGbEditor(editor) {
+  if (!editor) return null;
+  const rows = [...editor.querySelectorAll('[data-gb-row]')].map(r => { const [n, mn, mx] = r.querySelectorAll('input'); return { name: n.value.trim(), min: Engine.num(mn.value), max: Engine.num(mx.value) }; }).filter(g => g.name && g.min != null);
+  return rows.sort((a, b) => b.min - a.min);
+}
+
+/* Backend: Supabase accounts (email + password). Each person's planner is one row in public.planners,
+   readable and writable only by that person (row level security; see supabase/schema.sql). */
+const cfg = window.PLANNER_CONFIG || {};
+const auth = { status: 'loading', session: null, mode: 'signin', msg: '', recovery: false, sb: null };
+const cloud = { status: 'local', busy: false, dirty: false, timer: null, retry: null, lastWritten: 0, loaded: false, loading: false };
+const configured = () => typeof cfg.supabaseUrl === 'string' && /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)\/?$/.test(cfg.supabaseUrl.trim()) && typeof cfg.supabaseAnonKey === 'string' && cfg.supabaseAnonKey.trim().length > 20 && !/YOUR-/i.test(cfg.supabaseAnonKey);
+function storageKey() { return auth.session && auth.session.user ? KEY + '.' + auth.session.user.id : null; }
+const userEmail = () => (auth.session && auth.session.user && auth.session.user.email) || '';
+const siteUrl = () => location.origin + location.pathname.replace(/index\.html$/, '');
+
+/* ---------- Screens shown instead of the app ---------- */
+function authGate() {
+  if (!configured()) return setupScreen();
+  if (auth.status === 'loading') return splash('Signing you in…');
+  if (auth.recovery) return authScreen('newpass');
+  if (!auth.session) return authScreen(auth.mode);
+  if (!cloud.loaded) return splash('Loading your grades…');
+  return null;
+}
+const brandBlock = () => `<div class="brand" style="padding:0 0 18px"><div class="logo">A*</div><div><div class="name">A* Planner</div><div class="sub">Grade tracker</div></div></div>`;
+const splash = msg => `<div class="setup"><div class="card auth-card pop">${brandBlock()}<p class="muted">${esc(msg)}</p></div></div>`;
+function setupScreen() {
+  return `<div class="setup"><div class="card auth-card pop">${brandBlock()}<h1>Almost ready</h1>
+    <p class="muted" style="margin:8px 0 14px">This copy of the site is not connected to its database yet. Open <b>config.js</b> in the GitHub repository and paste in the two values from your Supabase project (Project Settings → API): the <b>Project URL</b> and the <b>anon public key</b>. The README has the full steps.</p>
+    <div class="code-box">window.PLANNER_CONFIG = {
+  supabaseUrl: "https://xxxxxxxxxxxx.supabase.co",
+  supabaseAnonKey: "eyJhbGciOi..."
+};</div></div></div>`;
+}
+function authScreen(mode) {
+  const tab = (m, l) => `<button type="button" class="${auth.mode === m ? 'active' : ''}" data-action="auth-mode" data-mode="${m}">${l}</button>`;
+  const field = (id, label, type, extra = '') => `<div class="field"><label for="${id}">${label}</label><input id="${id}" name="${id}" type="${type}" ${extra}></div>`;
+  let body = '';
+  if (mode === 'signin') body = `${field('email', 'Email', 'email', 'autocomplete="email" required')}${field('password', 'Password', 'password', 'autocomplete="current-password" required')}
+    <div class="row between"><button class="btn primary" type="submit">Sign in</button><button type="button" class="btn ghost sm" data-action="auth-mode" data-mode="reset">Forgot password?</button></div>`;
+  else if (mode === 'signup') body = `${field('email', 'Email', 'email', 'autocomplete="email" required')}${field('password', 'Password', 'password', 'autocomplete="new-password" minlength="8" required')}${field('confirm', 'Repeat password', 'password', 'autocomplete="new-password" required')}
+    <span class="help">At least 8 characters. Your grades are private to your account.</span><div><button class="btn primary" type="submit">Create account</button></div>`;
+  else if (mode === 'reset') body = `<p class="small muted">Enter your email and we will send a link to choose a new password.</p>${field('email', 'Email', 'email', 'autocomplete="email" required')}
+    <div class="row between"><button class="btn primary" type="submit">Send reset link</button><button type="button" class="btn ghost sm" data-action="auth-mode" data-mode="signin">Back to sign in</button></div>`;
+  else body = `<p class="small muted">Choose a new password for ${esc(userEmail()) || 'your account'}.</p>${field('password', 'New password', 'password', 'autocomplete="new-password" minlength="8" required')}${field('confirm', 'Repeat password', 'password', 'autocomplete="new-password" required')}
+    <div><button class="btn primary" type="submit">Save new password</button></div>`;
+  return `<div class="setup"><div class="card auth-card pop">${brandBlock()}
+    ${mode === 'newpass' ? '<h1>New password</h1>' : `<div class="seg" style="margin-bottom:16px">${tab('signin', 'Sign in')}${tab('signup', 'Create account')}</div>`}
+    ${auth.msg ? `<div class="status-line good" style="margin-bottom:12px">${icon('check')}<span>${esc(auth.msg)}</span></div>` : ''}
+    <form class="form" data-form="auth" novalidate><input type="hidden" name="mode" value="${mode}">${body}<div class="form-error" id="form-error"></div></form>
+    <p class="xs muted" style="margin-top:18px">Data is stored in your own account and is never shared with other users of this site.</p></div></div>`;
+}
+function accountHTML() {
+  if (!auth.session) return '';
+  return `<div class="account"><div class="xs muted">Signed in as</div><div class="small strong" style="overflow:hidden;text-overflow:ellipsis">${esc(userEmail())}</div><button class="btn sm ghost" data-action="sign-out" style="margin-top:6px">Sign out</button></div>`;
+}
+function accountCard() {
+  if (!auth.session) return '';
+  return `<div class="card"><h2>Account</h2><p class="muted small" style="margin:4px 0 12px">Signed in as <b>${esc(userEmail())}</b>. Your grades are saved to this account and follow you to any device.</p>
+    <details class="details" style="border:0;padding:0"><summary style="padding:0 0 10px"><span class="small strong">Change password</span></summary><div class="details-body" style="padding:0">
+      <form class="form" data-form="auth" novalidate style="max-width:360px"><input type="hidden" name="mode" value="newpass"><div class="field"><label for="password">New password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8"></div><div class="field"><label for="confirm">Repeat password</label><input id="confirm" name="confirm" type="password" autocomplete="new-password"></div><div class="form-error" id="form-error"></div><div><button class="btn" type="submit">Update password</button></div></form></div></details>
+    <div class="row" style="margin-top:12px"><button class="btn" data-action="sign-out">Sign out</button><button class="btn danger" data-action="delete-account-data">Delete my saved grades</button></div></div>`;
+}
+
+/* ---------- Save status ---------- */
+function saveStatusHTML(compact = false) {
+  const map = {
+    local: ['device', 'Saved in this browser', ''],
+    connecting: ['cloud', 'Connecting…', ''],
+    cloud: ['cloud', 'Saved to your account', 'Your grades follow your sign-in on any device.'],
+    saving: ['cloud', 'Saving…', ''],
+    error: ['device', 'Not saved online yet', 'Could not reach the server; your changes are kept in this browser and sent when it reconnects.'],
+  };
+  const [ic, label, help] = map[cloud.status] || map.local;
+  if (compact) return `<span title="${esc(label)}${help ? ' — ' + esc(help) : ''}">${icon(ic)}</span>`;
+  return `${icon(ic)}<div><div class="small strong">${esc(label)}</div>${help ? `<div class="xs muted">${esc(help)}</div>` : ''}</div>`;
+}
+function renderSaveStatus() { document.querySelectorAll('[data-save-status]').forEach(el => { el.innerHTML = saveStatusHTML(el.classList.contains('compact')); }); }
+function setCloudStatus(st) { cloud.status = st; renderSaveStatus(); }
+
+/* ---------- Sync ---------- */
+function cloudSchedule() {
+  if (!auth.session || !cloud.loaded) return;
+  clearTimeout(cloud.timer); cloud.timer = setTimeout(cloudPush, 600);
+}
+async function cloudPush() {
+  if (!auth.session || !auth.sb) return;
+  if (cloud.busy) { cloud.dirty = true; return; }
+  cloud.busy = true; setCloudStatus('saving'); clearTimeout(cloud.retry);
+  try {
+    const stamp = state.updatedAt || Date.now();
+    const { error } = await auth.sb.from('planners').upsert({ user_id: auth.session.user.id, state: JSON.parse(JSON.stringify(state)), updated_at: new Date(stamp).toISOString() }, { onConflict: 'user_id' });
+    if (error) throw error;
+    cloud.lastWritten = stamp; setCloudStatus('cloud');
+  } catch (e) {
+    setCloudStatus('error'); cloud.retry = setTimeout(cloudPush, 8000);
+  } finally {
+    cloud.busy = false;
+    if (cloud.dirty) { cloud.dirty = false; cloudSchedule(); }
+  }
+}
+function adoptRemote(row) {
+  const remote = normalize(row.state); remote.updatedAt = Date.parse(row.updated_at) || 0;
+  state = remote;
+  try { localStorage.setItem(storageKey(), JSON.stringify(state)); } catch (e) { /* stays in memory */ }
+}
+async function afterSignIn() {
+  if (cloud.loading || cloud.loaded) return;
+  cloud.loading = true;
+  let local = null;
+  try { const raw = localStorage.getItem(storageKey()); if (raw) local = normalize(JSON.parse(raw)); } catch (e) { /* no cache */ }
+  state = local || defaultState();
+  setCloudStatus('connecting');
+  try {
+    const { data, error } = await auth.sb.from('planners').select('state, updated_at').eq('user_id', auth.session.user.id).maybeSingle();
+    if (error) throw error;
+    cloud.loaded = true;
+    if (data && data.state) {
+      const remoteAt = Date.parse(data.updated_at) || 0;
+      if (!local || remoteAt >= (local.updatedAt || 0)) adoptRemote(data); else await cloudPush();
+    } else {
+      await cloudPush();
+    }
+    if (cloud.status !== 'error') setCloudStatus('cloud');
+  } catch (e) {
+    cloud.loaded = true; setCloudStatus('error');
+  }
+  cloud.loading = false;
+  applyTheme(); ui.view = 'dashboard'; ui.modal = null; renderModal(); render({ top: true });
+}
+async function refreshFromRemote() {
+  if (!auth.session || !cloud.loaded || cloud.busy) return;
+  try {
+    const { data, error } = await auth.sb.from('planners').select('state, updated_at').eq('user_id', auth.session.user.id).maybeSingle();
+    if (error || !data || !data.state) return;
+    const at = Date.parse(data.updated_at) || 0;
+    if (at > (state.updatedAt || 0) && at !== cloud.lastWritten && !ui.modal) { adoptRemote(data); render(); toast('Updated from another device'); }
+  } catch (e) { /* ignore */ }
+}
+function signedOutState() {
+  try { const k = storageKey(); if (k) localStorage.removeItem(k); } catch (e) { /* ignore */ }
+  auth.session = null; auth.recovery = false; cloud.loaded = false; cloud.loading = false; cloud.status = 'local';
+  state = defaultState(); auth.status = 'out'; auth.mode = 'signin'; ui.view = 'dashboard'; ui.modal = null; renderModal(); render({ top: true });
+}
+async function cloudInit() {
+  if (!configured()) { auth.status = 'out'; render(); return; }
+  if (!window.supabase || !window.supabase.createClient) { auth.status = 'out'; auth.msg = ''; render(); setTimeout(() => toast('Could not load the sign-in library. Check your connection and reload.'), 50); return; }
+  auth.sb = window.supabase.createClient(cfg.supabaseUrl.trim(), cfg.supabaseAnonKey.trim(), { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+  auth.sb.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') { auth.session = session; auth.status = 'in'; auth.recovery = true; render(); return; }
+    if (event === 'SIGNED_OUT' || !session) { if (auth.session) signedOutState(); return; }
+    const changed = !auth.session || auth.session.user.id !== session.user.id;
+    auth.session = session; auth.status = 'in';
+    if (changed || !cloud.loaded) afterSignIn();
+  });
+  try {
+    const { data } = await auth.sb.auth.getSession();
+    if (data && data.session) { auth.session = data.session; auth.status = 'in'; afterSignIn(); }
+    else if (auth.status === 'loading') { auth.status = 'out'; render(); }
+  } catch (e) { auth.status = 'out'; render(); }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshFromRemote(); });
+}
+
+/* ---------- Auth actions & forms ---------- */
+function friendly(e) {
+  const m = (e && e.message) ? e.message : String(e || '');
+  if (/invalid login credentials/i.test(m)) return 'Wrong email or password.';
+  if (/already registered|already exists/i.test(m)) return 'An account with this email already exists. Sign in instead.';
+  if (/email not confirmed/i.test(m)) return 'Confirm your email first (check your inbox for the link), then sign in.';
+  if (/rate limit/i.test(m)) return 'Too many emails were sent for now. Try again in a little while.';
+  if (/signups not allowed|not allowed/i.test(m)) return 'Sign-ups are turned off for this site.';
+  if (/password/i.test(m) && /least|short|weak/i.test(m)) return m;
+  if (/failed to fetch|network|load failed/i.test(m)) return 'Could not reach the server. Check your connection and try again.';
+  if (/valid email/i.test(m)) return 'Enter a valid email address.';
+  return m || 'Something went wrong. Please try again.';
+}
+async function handleAuth(f) {
+  const mode = f.mode.value, email = f.email ? f.email.value.trim() : '', pw = f.password ? f.password.value : '', confirm = f.confirm ? f.confirm.value : '';
+  const btn = f.querySelector('button[type="submit"]'); const label = btn ? btn.textContent : '';
+  const busy = on => { if (!btn) return; btn.disabled = on; btn.textContent = on ? 'Please wait…' : label; };
+  const box = f.querySelector('.form-error'); const setError = msg => { if (box) box.textContent = msg; };
+  setError('');
+  try {
+    if (!auth.sb) throw new Error('Could not reach the server. Reload the page and try again.');
+    if (mode !== 'newpass' && !/^\S+@\S+\.\S+$/.test(email)) throw new Error('Enter a valid email address.');
+    if ((mode === 'signup' || mode === 'newpass') && pw.length < 8) throw new Error('Use a password of at least 8 characters.');
+    if ((mode === 'signup' || mode === 'newpass') && pw !== confirm) throw new Error('The two passwords do not match.');
+    if (mode === 'signin' && !pw) throw new Error('Enter your password.');
+    busy(true);
+    if (mode === 'signup') {
+      const { data, error } = await auth.sb.auth.signUp({ email, password: pw, options: { emailRedirectTo: siteUrl() } });
+      if (error) throw error;
+      if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) throw new Error('An account with this email already exists. Sign in instead.');
+      if (!data || !data.session) { auth.mode = 'signin'; auth.msg = 'Account created. Check your email for a confirmation link, then sign in.'; render(); }
+    } else if (mode === 'signin') {
+      const { error } = await auth.sb.auth.signInWithPassword({ email, password: pw });
+      if (error) throw error;
+    } else if (mode === 'reset') {
+      const { error } = await auth.sb.auth.resetPasswordForEmail(email, { redirectTo: siteUrl() });
+      if (error) throw error;
+      auth.mode = 'signin'; auth.msg = 'If that email has an account, a reset link is on its way.'; render();
+    } else if (mode === 'newpass') {
+      const { error } = await auth.sb.auth.updateUser({ password: pw });
+      if (error) throw error;
+      auth.recovery = false; toast('Password updated'); if (f.password) { f.password.value = ''; f.confirm.value = ''; }
+      if (!cloud.loaded) afterSignIn(); else render();
+    }
+  } catch (e) {
+    busy(false); setError(friendly(e));
+  }
+}
+const backendForms = { auth(f) { handleAuth(f); } };
+const backendActions = {
+  'auth-mode'(el) { auth.mode = el.dataset.mode; auth.msg = ''; render(); },
+  async 'sign-out'() { try { await auth.sb.auth.signOut(); } catch (e) { /* ignore */ } if (auth.session) signedOutState(); },
+  'delete-account-data'() {
+    confirmModal('Delete all your saved grades?', 'Every subject, result and upcoming test in your account will be deleted. Your login stays. This cannot be undone.', 'Delete everything', async () => {
+      try { const { error } = await auth.sb.from('planners').delete().eq('user_id', auth.session.user.id); if (error) throw error; } catch (e) { return toast('Could not delete right now: ' + friendly(e)); }
+      const theme = state.settings.theme; state = defaultState(); state.settings.theme = theme; ui.view = 'dashboard'; commit({ top: true }); toast('Saved grades deleted');
+    });
+  },
+};
+
+/* ---------- Modals ---------- */
+function openModal(html, opts = {}) { ui.modal = { html, ...opts }; renderModal(); }
+function closeModal() { ui.modal = null; renderModal(); }
+function renderModal() {
+  const root = $('#modal-root');
+  if (!ui.modal) { root.innerHTML = ''; document.body.style.overflow = ''; return; }
+  root.innerHTML = `<div class="modal-bg" data-action="modal-bg"><div class="modal ${ui.modal.wide ? 'wide' : ''}" role="dialog" aria-modal="true">${ui.modal.html}</div></div>`;
+  document.body.style.overflow = 'hidden';
+  const first = root.querySelector('input:not([type=hidden]), select, textarea, button.primary');
+  if (first && !ui.modal.noFocus) setTimeout(() => first.focus(), 30);
+}
+function modalHead(title, sub = '') { return `<div class="modal-head"><div><h2>${title}</h2>${sub ? `<div class="small muted">${sub}</div>` : ''}</div><button class="btn icon ghost" type="button" data-action="modal-close" aria-label="Close">${icon('x')}</button></div>`; }
+const subjectOptions = (sel) => state.subjects.map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+function targetOptions(subject, selected, allowDefault) {
+  const gs = subject ? Engine.sortedGrades(subject.grades) : [];
+  const def = allowDefault ? `<option value="" ${!selected ? 'selected' : ''}>Subject target${subject ? ` (${esc(Engine.resolveTarget(subject, null).name)})` : ''}</option>` : '';
+  return def + gs.map(g => `<option value="${esc(g.name)}" ${g.name === selected ? 'selected' : ''}>${esc(g.name)} (≥ ${fmtNum(g.min, 2)}%)</option>`).join('');
+}
+function confirmModal(title, message, label, onConfirm) {
+  openModal(`${modalHead(esc(title))}<p>${message}</p><div class="modal-foot"><button class="btn" type="button" data-action="modal-close">Cancel</button><button class="btn danger" type="button" data-action="confirm-yes">${esc(label)}</button></div>`, { onConfirm, noFocus: true });
+}
+function subjectModal(s) {
+  const isNew = !s; s = s || { name: '', code: '', target: 'A*', mode: 'auto', weight: null, grades: presetGrades('uk') };
+  return `${modalHead(isNew ? 'Add subject' : 'Edit subject', 'Grade boundaries are specific to this subject.')}
+  <form class="form" data-form="subject" novalidate><input type="hidden" name="id" value="${esc(s.id || '')}">
+    <div class="two"><div class="field"><label for="sf-name">Subject name</label><input id="sf-name" name="name" value="${esc(s.name)}" placeholder="Mathematics" required maxlength="60"></div><div class="field"><label for="sf-code">Subject code <span class="faint">(optional)</span></label><input id="sf-code" name="code" value="${esc(s.code)}" placeholder="MATH" maxlength="20"></div></div>
+    <div class="three"><div class="field"><label for="subj-target">Target grade</label><select id="subj-target" name="target">${Engine.sortedGrades(s.grades).map(g => `<option value="${esc(g.name)}" ${g.name === s.target ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="sf-mode">Calculation</label><select id="sf-mode" name="mode"><option value="auto" ${s.mode === 'auto' ? 'selected' : ''}>Auto-detect</option><option value="weighted" ${s.mode === 'weighted' ? 'selected' : ''}>Weighted</option><option value="marks" ${s.mode === 'marks' ? 'selected' : ''}>Marks-based</option></select><span class="help">Auto: weighted if any assessment has a weightage</span></div>
+      <div class="field"><label for="sf-weight">Subject weight <span class="faint">(overall %)</span></label><input id="sf-weight" name="weight" type="number" min="0" max="100" step="any" inputmode="decimal" value="${s.weight ?? ''}" placeholder="e.g. 15"><span class="help">Used by the weighted overall method</span></div></div>
+    <div class="field"><label>Grade boundaries</label>${gbEditorHTML(s.grades, 'gb')}<span class="help">The grade is the highest row whose minimum is at or below the percentage. Max is for display.</span></div>
+    <div class="form-error" id="form-error"></div>
+    <div class="modal-foot"><button class="btn" type="button" data-action="modal-close">Cancel</button><button class="btn primary" type="submit">${isNew ? 'Add subject' : 'Save changes'}</button></div></form>`;
+}
+function assessmentModal(a, presetSubject) {
+  const isNew = !a || !a.id; a = a || {};
+  const sid = a.subjectId || presetSubject || (state.subjects[0] || {}).id;
+  const obtained = a.obtained ?? '', max = a.max ?? '';
+  return `${modalHead(a.fromUpcoming ? 'Record result' : isNew ? 'Add assessment' : 'Edit assessment', a.fromUpcoming ? 'The upcoming test will be moved to completed.' : 'Percentage is calculated automatically.')}
+  <form class="form" data-form="assessment" novalidate><input type="hidden" name="id" value="${esc(a.id || '')}"><input type="hidden" name="fromUpcoming" value="${esc(a.fromUpcoming || '')}">
+    <div class="two"><div class="field"><label for="af-subject">Subject</label><select id="af-subject" name="subjectId" required>${subjectOptions(sid)}</select></div><div class="field"><label for="af-type">Type</label><select id="af-type" name="type">${TYPES.map(t => `<option ${t === (a.type || TYPES[0]) ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
+    <div class="two"><div class="field"><label for="af-name">Assessment name</label><input id="af-name" name="name" value="${esc(a.name || '')}" placeholder="Test 1" required maxlength="80"></div><div class="field"><label for="af-date">Date</label><input id="af-date" name="date" type="date" value="${esc(a.date || todayISO())}" required></div></div>
+    <div class="three"><div class="field"><label for="af-obtained">Marks obtained</label><input id="af-obtained" name="obtained" type="number" min="0" step="any" inputmode="decimal" value="${obtained}" placeholder="45" required data-live="assess-live"></div><div class="field"><label for="af-max">Maximum marks</label><input id="af-max" name="max" type="number" min="0" step="any" inputmode="decimal" value="${max}" placeholder="50" required data-live="assess-live"></div><div class="field"><label>Percentage</label><div class="input num" id="assess-pct-preview" style="background:var(--surface-2)">${max ? fmtPct(Engine.pct(+obtained, +max)) : '—'}</div></div></div>
+    <div class="two"><div class="field"><label for="af-weight">Weightage % <span class="faint">(optional)</span></label><input id="af-weight" name="weight" type="number" min="0" max="100" step="any" inputmode="decimal" value="${a.weight ?? ''}" placeholder="e.g. 20"><span class="help">Leave blank for a simple marks-based calculation</span></div><div class="field"><label for="af-notes">Notes <span class="faint">(optional)</span></label><input id="af-notes" name="notes" value="${esc(a.notes || '')}" maxlength="200"></div></div>
+    <div class="form-error" id="form-error"></div>
+    <div class="modal-foot"><button class="btn" type="button" data-action="modal-close">Cancel</button><button class="btn primary" type="submit">${isNew ? 'Add assessment' : 'Save changes'}</button></div></form>`;
+}
+function upcomingModal(u, presetSubject) {
+  const isNew = !u; u = u || {};
+  const sid = u.subjectId || presetSubject || (state.subjects[0] || {}).id; const subj = subjectById(sid);
+  return `${modalHead(isNew ? 'Add upcoming test' : 'Edit upcoming test', 'It appears on the calendar and in every required-score calculation.')}
+  <form class="form" data-form="upcoming" novalidate><input type="hidden" name="id" value="${esc(u.id || '')}">
+    <div class="two"><div class="field"><label for="uf-subject">Subject</label><select id="uf-subject" name="subjectId" required data-change="up-subject">${subjectOptions(sid)}</select></div><div class="field"><label for="uf-name">Test name</label><input id="uf-name" name="name" value="${esc(u.name || '')}" placeholder="Algebra Test" required maxlength="80"></div></div>
+    <div class="three"><div class="field"><label for="uf-date">Date</label><input id="uf-date" name="date" type="date" value="${esc(u.date || addDaysISO(todayISO(), 7))}" required></div><div class="field"><label for="uf-max">Maximum marks</label><input id="uf-max" name="max" type="number" min="0" step="any" inputmode="decimal" value="${u.max ?? ''}" placeholder="50" required></div><div class="field"><label for="uf-weight">Weightage % <span class="faint">(optional)</span></label><input id="uf-weight" name="weight" type="number" min="0" max="100" step="any" inputmode="decimal" value="${u.weight ?? ''}" placeholder="e.g. 15"></div></div>
+    <div class="two"><div class="field"><label for="uf-target">Target grade</label><select id="uf-target" name="target">${targetOptions(subj, u.target || '', true)}</select></div><div class="field"><label for="uf-expected">Expected score % <span class="faint">(optional)</span></label><input id="uf-expected" name="expected" type="number" min="0" max="100" step="0.1" value="${u.expected ?? ''}" placeholder="e.g. 88"><span class="help">Used on the Predictions page</span></div></div>
+    <div class="field"><label for="uf-notes">Notes <span class="faint">(optional)</span></label><textarea id="uf-notes" name="notes" maxlength="400">${esc(u.notes || '')}</textarea></div>
+    <div class="form-error" id="form-error"></div>
+    <div class="modal-foot"><button class="btn" type="button" data-action="modal-close">Cancel</button><button class="btn primary" type="submit">${isNew ? 'Add test' : 'Save changes'}</button></div></form>`;
+}
+function eventModal(id) {
+  const u = state.upcoming.find(x => x.id === id); if (!u) return '';
+  const s = subjectById(u.subjectId); const c = computeSubject(s);
+  const tgt = u.target ? Engine.resolveTarget(s, u.target) : c.target;
+  const row = (k, v) => `<div class="row between" style="padding:8px 0;border-top:1px solid var(--border)"><span class="muted small">${k}</span><span class="strong">${v}</span></div>`;
+  return `${modalHead(esc(u.name), `<span class="dot" style="background:${color(s)}"></span> ${esc(s.name)}`)}
+    <div>${row('Date', `${esc(fmtDate(u.date))} <span class="muted small">${esc(relDays(u.date))}</span>`)}${row('Maximum marks', fmtNum(u.max))}${row('Weightage', u.weight != null ? fmtNum(u.weight) + '%' : (c.model.mode === 'marks' ? 'Marks-based' : 'None'))}${row('Target grade', `${esc(tgt.name)} (≥ ${fmtPct(tgt.min)})`)}${row('Required score', requiredCell(c, u))}${u.expected != null ? row('Expected score', fmtPct(u.expected)) : ''}${u.notes ? row('Notes', esc(u.notes)) : ''}</div>
+    <div class="modal-foot"><button class="btn danger left" type="button" data-action="delete-upcoming" data-id="${u.id}">${icon('trash')}Delete</button><button class="btn" type="button" data-action="record-result" data-id="${u.id}">Record result</button><button class="btn primary" type="button" data-action="edit-upcoming" data-id="${u.id}">${icon('edit')}Edit</button></div>`;
+}
+function exportModal() {
+  const json = JSON.stringify(state, null, 2);
+  return `${modalHead('Export data', 'Copy this backup or download it as a file.')}
+    <textarea id="export-text" class="input code" readonly aria-label="Backup JSON">${esc(json)}</textarea>
+    <div class="modal-foot"><button class="btn" type="button" data-action="modal-close">Close</button><button class="btn" type="button" data-action="download-export">${icon('download')}Download file</button><button class="btn primary" type="button" data-action="copy-export">${icon('copy')}Copy to clipboard</button></div>`;
+}
+function importModal() {
+  return `${modalHead('Import data', 'Restores a backup made with Export. This replaces everything currently saved.')}
+    <form class="form" data-form="import"><div class="field"><label for="import-file">Backup file</label><input id="import-file" type="file" accept="application/json,.json" data-change="import-file"></div>
+    <div class="field"><label for="import-text">…or paste the backup text</label><textarea id="import-text" class="input code" placeholder='{"version":1,...}'></textarea></div>
+    <div class="form-error" id="form-error"></div>
+    <div class="modal-foot"><button class="btn" type="button" data-action="modal-close">Cancel</button><button class="btn primary" type="submit">${icon('upload')}Import and replace</button></div></form>`;
+}
+function moreSheet() {
+  return `${modalHead('More')}<div class="sheet-list">${NAV.map(([v, l, ic]) => `<button class="nav-item ${ui.view === v ? 'active' : ''}" data-action="nav" data-view="${v}">${icon(ic)}${l}</button>`).join('')}</div>`;
+}
+function toast(msg) {
+  ui.toast = msg; const root = $('#toast-root'); root.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`;
+  clearTimeout(ui.toastTimer); ui.toastTimer = setTimeout(() => { root.innerHTML = ''; }, 2400);
+}
+
+/* ---------- Shell ---------- */
+function render(opts = {}) {
+  applyTheme();
+  const app = $('#app'); const y = window.scrollY;
+  if (typeof authGate === 'function') { const gate = authGate(); if (gate) { app.innerHTML = gate; return; } }
+  if (!state.subjects.length) { app.innerHTML = viewSetup(); return; }
+  const all = computeAll(); const ov = overallInfo(all);
+  const views = { dashboard: viewDashboard, subjects: viewSubjects, subject: viewSubject, assessments: viewAssessments, upcoming: viewUpcoming, calendar: viewCalendar, calc: viewCalc, predictions: viewPredictions, settings: viewSettings };
+  const content = (views[ui.view] || viewDashboard)(all);
+  const activeNav = ui.view === 'subject' ? 'subjects' : ui.view;
+  app.innerHTML = `<div class="frame">
+    <aside class="sidebar"><div class="brand"><div class="logo">A*</div><div><div class="name">A* Planner</div><div class="sub">Grade tracker</div></div></div>
+      ${NAV.map(([v, l, ic]) => `<button class="nav-item ${activeNav === v ? 'active' : ''}" data-action="nav" data-view="${v}">${icon(ic)}${l}</button>`).join('')}
+      <div class="spacer"></div>
+      <div class="side-foot"><div class="overall-mini"><div class="eyebrow">Overall</div><div class="v" id="side-overall">${fmtPct(ov.value)}</div><div class="xs muted">${ov.method === 'weighted' ? 'Weighted subjects' : 'Simple average'}</div></div>
+        <div class="save-status" data-save-status>${saveStatusHTML()}</div>${typeof accountHTML === 'function' ? accountHTML() : ''}
+        <button class="nav-item" data-action="toggle-theme">${icon(isDarkNow() ? 'sun' : 'moon')}${isDarkNow() ? 'Light mode' : 'Dark mode'}</button></div></aside>
+    <div style="min-width:0"><div class="topbar"><div class="brand"><div class="logo">A*</div><div><div class="name">A* Planner</div></div></div><div class="row"><span class="save-status compact" data-save-status>${saveStatusHTML(true)}</span><span class="chip primary" id="top-overall">${fmtPct(ov.value)}</span><button class="btn icon ghost" data-action="toggle-theme" aria-label="Toggle theme">${icon(isDarkNow() ? 'sun' : 'moon')}</button></div></div>
+      <main class="main"><div class="content" id="content">${content}</div></main></div>
+    <nav class="bottomnav">${MOBILE_NAV.map(v => { const n = NAV.find(x => x[0] === v); const label = v === 'more' ? 'More' : v === 'calc' ? 'A* Calc' : n[1]; const ic = v === 'more' ? 'more' : n[2]; const act = v === 'more' ? 'more' : 'nav'; const isActive = v === activeNav || (v === 'more' && !MOBILE_NAV.includes(activeNav)); return `<button class="${isActive ? 'active' : ''}" data-action="${act}" data-view="${v}">${icon(ic)}${label}</button>`; }).join('')}</nav>
+  </div>`;
+  window.scrollTo(0, opts.top ? 0 : y);
+}
+function commit(opts) { save(); render(opts); }
+function go(view, opts = {}) { Object.assign(ui, opts); ui.view = view; ui.modal = null; renderModal(); render({ top: true }); }
+function setError(msg) { const e = $('#form-error'); if (e) e.textContent = msg; }
+function refreshTargetSelect(form, selectId) {
+  const sel = form.querySelector('#' + selectId); const editor = form.querySelector('.gb-editor'); if (!sel || !editor) return;
+  const cur = sel.value; const names = [...editor.querySelectorAll('[data-gb-row] input:first-child')].map(i => i.value.trim()).filter(Boolean);
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}" ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('');
+}
+
+/* ---------- Actions ---------- */
+const actions = {
+  ...(typeof backendActions === 'object' ? backendActions : {}),
+  nav(el) { go(el.dataset.view); },
+  more() { openModal(moreSheet()); },
+  'toggle-theme'() { state.settings.theme = isDarkNow() ? 'light' : 'dark'; commit(); },
+  'set-theme'(el) { state.settings.theme = el.dataset.value; commit(); },
+  'set-overall'(el) { state.settings.overallMethod = el.dataset.value; commit(); },
+  'open-subject'(el) { go('subject', { subjectId: el.dataset.id }); },
+  'open-calc'(el) { ui.calc = { subjectId: el.dataset.id, testId: null, marks: null }; go('calc'); },
+  'add-subject'() { if (state.subjects.length >= MAX_SUBJECTS) return toast(`You can track up to ${MAX_SUBJECTS} subjects.`); openModal(subjectModal(null), { wide: true }); },
+  'edit-subject'(el) { const s = subjectById(el.dataset.id); if (s) openModal(subjectModal(s), { wide: true }); },
+  'delete-subject'(el) {
+    const s = subjectById(el.dataset.id); if (!s) return;
+    const n = state.assessments.filter(a => a.subjectId === s.id).length + state.upcoming.filter(u => u.subjectId === s.id).length;
+    confirmModal(`Delete ${s.name}?`, `This removes the subject${n ? ` and its ${n} assessment${n > 1 ? 's' : ''}` : ''}. This cannot be undone.`, 'Delete subject', () => {
+      state.subjects = state.subjects.filter(x => x.id !== s.id); state.assessments = state.assessments.filter(a => a.subjectId !== s.id); state.upcoming = state.upcoming.filter(u => u.subjectId !== s.id);
+      if (ui.subjectId === s.id) ui.view = 'subjects';
+      commit(); toast('Subject deleted');
+    });
+  },
+  'add-assessment'(el) { if (!state.subjects.length) return toast('Add a subject first'); openModal(assessmentModal(null, el.dataset.subject)); },
+  'edit-assessment'(el) { const a = state.assessments.find(x => x.id === el.dataset.id); if (a) openModal(assessmentModal(a)); },
+  'delete-assessment'(el) { const a = state.assessments.find(x => x.id === el.dataset.id); if (!a) return; confirmModal(`Delete ${a.name}?`, 'The subject percentage will be recalculated without it.', 'Delete', () => { state.assessments = state.assessments.filter(x => x.id !== a.id); commit(); toast('Assessment deleted'); }); },
+  'add-upcoming'(el) { if (!state.subjects.length) return toast('Add a subject first'); openModal(upcomingModal(null, el.dataset.subject)); },
+  'edit-upcoming'(el) { const u = state.upcoming.find(x => x.id === el.dataset.id); if (u) openModal(upcomingModal(u)); },
+  'delete-upcoming'(el) { const u = state.upcoming.find(x => x.id === el.dataset.id); if (!u) return; confirmModal(`Delete ${u.name}?`, 'It will be removed from the calendar and all calculations.', 'Delete', () => { state.upcoming = state.upcoming.filter(x => x.id !== u.id); commit(); toast('Upcoming test deleted'); }); },
+  'record-result'(el) { const u = state.upcoming.find(x => x.id === el.dataset.id); if (!u) return; openModal(assessmentModal({ subjectId: u.subjectId, name: u.name, date: u.date, max: u.max, weight: u.weight, notes: u.notes, type: TYPES[0], fromUpcoming: u.id })); },
+  'filter-assess'(el) { ui.assessFilter = el.dataset.id; render(); },
+  'filter-upcoming'(el) { ui.upFilter = el.dataset.id; render(); },
+  'sort-upcoming'(el) { const k = el.dataset.key; ui.upSort = { key: k, dir: ui.upSort.key === k ? -ui.upSort.dir : 1 }; render(); },
+  'cal-mode'(el) { ui.cal.mode = el.dataset.mode; render(); },
+  'cal-today'() { ui.cal.cursor = todayISO(); render(); },
+  'cal-nav'(el) { const d = parseISO(ui.cal.cursor) || new Date(); const n = +el.dataset.dir; if (ui.cal.mode === 'week') d.setDate(d.getDate() + 7 * n); else { d.setDate(1); d.setMonth(d.getMonth() + n); } ui.cal.cursor = iso(d); render(); },
+  'open-event'(el) { openModal(eventModal(el.dataset.id), { noFocus: true }); },
+  'calc-subject'(el) { ui.calc.subjectId = el.dataset.id; ui.calc.testId = null; ui.calc.marks = null; render(); },
+  'pred-clear'(el) { const u = state.upcoming.find(x => x.id === el.dataset.id); if (u) { u.expected = null; commit(); } },
+  'export'() { openModal(exportModal(), { noFocus: true }); },
+  'copy-export'() {
+    const ta = $('#export-text'); const done = () => toast('Copied to clipboard');
+    const fallback = () => { ta.focus(); ta.select(); try { document.execCommand('copy'); done(); } catch (e) { toast('Select the text and copy it manually'); } };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, fallback); else fallback();
+  },
+  async 'download-export'() {
+    const filename = `astar-planner-backup-${todayISO()}.json`, json = JSON.stringify(state, null, 2);
+    if (window.claude && typeof window.claude.use === 'function') {
+      const dl = await window.claude.use('downloads');
+      if (!dl) return toast('Saving files is unavailable here; use Copy to clipboard');
+      try { await dl.save({ filename, data: json }); toast('Backup saved'); } catch (e) { if (!e || e.code !== 'declined') toast('Could not save the file; copy the text instead'); }
+      return;
+    }
+    try { const blob = new Blob([json], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); } catch (e) { toast('Download blocked here; copy the text instead'); }
+  },
+  'import'() { openModal(importModal()); },
+  'load-demo'() {
+    const apply = () => { state = demoState(); ui.view = 'dashboard'; ui.modal = null; renderModal(); commit({ top: true }); toast('Sample data loaded'); };
+    if (state.subjects.length || state.assessments.length) confirmModal('Replace your data with sample data?', 'Your current subjects and assessments will be replaced. Export first if you want to keep them.', 'Load sample data', apply); else apply();
+  },
+  reset() { confirmModal('Reset everything?', 'All assessments and upcoming tests will be deleted from this browser, and the ten subjects go back to their starting boundaries.', 'Reset', () => { const theme = state.settings.theme; state = defaultState(); state.settings.theme = theme; ui.view = 'dashboard'; commit({ top: true }); toast('Everything was reset'); }); },
+  'start-wizard'() { confirmModal('Set up subjects from scratch?', 'This removes every subject, assessment and upcoming test, then opens the setup screen.', 'Open setup', () => { const theme = state.settings.theme; state = defaultState(); state.settings.theme = theme; state.subjects = []; ui.setupStep = 1; ui.setupCount = 10; ui.view = 'dashboard'; commit({ top: true }); }); },
+  'modal-close'() { closeModal(); },
+  'modal-bg'(el, e) { if (e.target === el) closeModal(); },
+  'confirm-yes'() { const fn = ui.modal && ui.modal.onConfirm; closeModal(); if (fn) fn(); },
+  'gb-add'(el) { const editor = document.getElementById(el.dataset.editor); const foot = editor.querySelector(':scope > .row'); foot.insertAdjacentHTML('beforebegin', gbRowHTML({ name: '', min: '', max: '' }, 0)); foot.previousElementSibling.querySelector('input').focus(); },
+  'gb-remove'(el) { const row = el.closest('[data-gb-row]'); const form = el.closest('form'); const wrap = row.closest('.setup-gb'); row.remove(); if (form) { refreshTargetSelect(form, 'subj-target'); if (wrap) syncSetupTarget(wrap, form); } },
+  'setup-toggle-gb'(el) {
+    const i = el.dataset.row; const row = el.closest('.setup-row'); const existing = document.getElementById(`setup-gb-${i}`);
+    if (existing) { existing.remove(); el.textContent = 'Boundaries'; return; }
+    const preset = row.querySelector(`[name="preset-${i}"]`).value;
+    row.insertAdjacentHTML('afterend', `<div class="setup-gb" id="setup-gb-${i}" data-row="${i}">${gbEditorHTML(presetGrades(preset), `setup-gb-${i}`)}</div>`);
+    el.textContent = 'Hide boundaries';
+  },
+  'setup-back'() { ui.setupStep = 1; render(); },
+};
+function syncSetupTarget(rowOrEl, form) {
+  const wrap = rowOrEl && rowOrEl.closest ? rowOrEl.closest('.setup-gb') : null; if (!wrap) return;
+  const i = wrap.dataset.row; const sel = form.querySelector(`[name="target-${i}"]`); const cur = sel.value;
+  const names = [...wrap.querySelectorAll('[data-gb-row] input:first-child')].map(x => x.value.trim()).filter(Boolean);
+  sel.innerHTML = names.map(n => `<option value="${esc(n)}" ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('');
+}
+
+const changes = {
+  'subject-mode'(el) { const s = subjectById(el.dataset.id); if (s) { s.mode = el.value; commit(); } },
+  'subject-target'(el) { const s = subjectById(el.dataset.id); if (s) { s.target = el.value; commit(); } },
+  'calc-test'(el) { ui.calc.testId = el.value; ui.calc.marks = null; render(); },
+  'pred-assumption'(el) { state.settings.predAssumption = el.value; commit(); },
+  'setup-preset'(el) {
+    const i = el.dataset.row; const form = el.closest('form'); const grades = presetGrades(el.value);
+    const sel = form.querySelector(`[name="target-${i}"]`); sel.innerHTML = grades.map(g => `<option value="${esc(g.name)}">${esc(g.name)}</option>`).join('');
+    const wrap = document.getElementById(`setup-gb-${i}`); if (wrap) wrap.innerHTML = gbEditorHTML(grades, `setup-gb-${i}`);
+  },
+  'gb-preset'(el) {
+    if (!el.value) return; const editor = document.getElementById(el.dataset.editor); const grades = presetGrades(el.value);
+    editor.querySelectorAll('[data-gb-row]').forEach(r => r.remove()); const foot = editor.querySelector(':scope > .row');
+    foot.insertAdjacentHTML('beforebegin', grades.map((g, i) => gbRowHTML(g, i)).join('')); el.value = '';
+    const form = el.closest('form'); if (form) { refreshTargetSelect(form, 'subj-target'); syncSetupTarget(editor, form); }
+  },
+  'up-subject'(el) { const subj = subjectById(el.value); const sel = $('#uf-target'); if (sel) sel.innerHTML = targetOptions(subj, '', true); },
+  'import-file'(el) { const f = el.files && el.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { $('#import-text').value = r.result; }; r.readAsText(f); },
+};
+
+const lives = {
+  'calc-marks'(el) {
+    const all = computeAll(); const c = all.find(x => x.subject.id === ui.calc.subjectId); if (!c) return;
+    const ctx = whatIfCtx(c); if (!ctx) return; const max = ctx.test.max;
+    const v = el.value === '' ? null : clamp(Math.round(+el.value), 0, max); if (v == null) return;
+    ui.calc.marks = v;
+    const other = el.id === 'wi-marks' ? $('#wi-slider') : $('#wi-marks'); if (other && +other.value !== v) other.value = v;
+    const chip = $('#wi-pct'); if (chip) chip.textContent = fmtPct(Engine.pct(v, max));
+    const out = $('#whatif-out'); if (out) out.innerHTML = whatIfOut(c, ctx);
+  },
+  'pred-marks'(el) { predLive(el, el.value === '' ? null : Engine.pct(+el.value, +el.dataset.max), 'pct'); },
+  'pred-pct'(el) { predLive(el, el.value === '' ? null : +el.value, 'marks'); },
+  'subject-weight'(el) { const s = subjectById(el.dataset.id); if (!s) return; s.weight = Engine.num(el.value); save(); const W = state.subjects.reduce((a, x) => a + (x.weight > 0 ? x.weight : 0), 0); const sum = $('#weights-sum'); if (sum) sum.innerHTML = weightsSumText(W); const ov = overallInfo(computeAll()); const so = $('#side-overall'); if (so) so.textContent = fmtPct(ov.value); const to = $('#top-overall'); if (to) to.textContent = fmtPct(ov.value); },
+  'gb-name'(el) { const form = el.closest('form'); if (form) { refreshTargetSelect(form, 'subj-target'); syncSetupTarget(el, form); } },
+  'assess-live'() { const o = +$('#af-obtained').value, m = +$('#af-max').value; $('#assess-pct-preview').textContent = m > 0 ? fmtPct(Engine.pct(o, m)) : '—'; },
+};
+function predLive(el, pctValue, otherKind) {
+  const u = state.upcoming.find(x => x.id === el.dataset.id); if (!u) return;
+  u.expected = pctValue == null ? null : clamp(pctValue, 0, 100); save();
+  const row = el.closest('.pred-row'); const other = row.querySelector(`[data-live="pred-${otherKind}"]`);
+  if (other) other.value = u.expected == null ? '' : otherKind === 'marks' ? fmtNum(u.expected / 100 * +el.dataset.max, 1) : fmtNum(u.expected, 1);
+  const all = computeAll(); const c = all.find(x => x.subject.id === u.subjectId);
+  const res = $(`#pred-result-${u.subjectId}`); if (res) res.innerHTML = predResult(c, state.settings.predAssumption || 'current');
+  const ov = Engine.overall(all.map(x => ({ subject: x.subject, value: Engine.predict(x.model, x.target.min, state.settings.predAssumption || 'current').final })), state.settings.overallMethod);
+  const po = $('#pred-overall'); if (po) po.textContent = fmtPct(ov.value);
+}
+
+/* ---------- Forms ---------- */
+const forms = {
+  ...(typeof backendForms === 'object' ? backendForms : {}),
+  'setup-count'(f) { ui.setupCount = clamp(parseInt(f.count.value, 10) || 1, 1, MAX_SUBJECTS); ui.setupStep = 2; render({ top: true }); },
+  'setup-finish'(f) {
+    const subs = [];
+    for (let i = 0; i < (ui.setupCount || 10); i++) {
+      const name = (f[`name-${i}`] || {}).value; if (!name || !name.trim()) continue;
+      const editor = document.getElementById(`setup-gb-${i}-editor`);
+      const grades = editor ? readGbEditor(editor) : presetGrades(f[`preset-${i}`].value);
+      if (!grades.length) { setError(`${name.trim()}: add at least one grade boundary.`); return; }
+      const target = f[`target-${i}`].value;
+      subs.push({ id: uid(), name: name.trim(), code: (f[`code-${i}`].value || '').trim(), target: grades.some(g => g.name === target) ? target : grades[0].name, mode: 'auto', color: subs.length % COLORS.length, weight: null, grades });
+    }
+    if (!subs.length) { const first = f.querySelector('[name="name-0"]'); if (first) { first.focus(); first.setCustomValidity('Enter at least one subject'); first.reportValidity(); setTimeout(() => first.setCustomValidity(''), 1500); } return; }
+    state.subjects = subs.slice(0, MAX_SUBJECTS); ui.view = 'dashboard';
+    commit({ top: true }); toast(`${subs.length} subject${subs.length > 1 ? 's' : ''} added`);
+  },
+  subject(f) {
+    const name = f.name.value.trim(); if (!name) return setError('Enter a subject name.');
+    const grades = readGbEditor(f.querySelector('#gb-editor')); if (!grades || !grades.length) return setError('Add at least one grade with a minimum percentage.');
+    const names = grades.map(g => g.name); if (new Set(names).size !== names.length) return setError('Grade names must be unique.');
+    const target = grades.some(g => g.name === f.target.value) ? f.target.value : grades[0].name;
+    const data = { name, code: f.code.value.trim(), target, mode: f.mode.value, weight: Engine.num(f.weight.value), grades };
+    const id = f.id.value; const existing = id && subjectById(id);
+    let sid = id;
+    if (existing) Object.assign(existing, data);
+    else { if (state.subjects.length >= MAX_SUBJECTS) return setError(`You can track up to ${MAX_SUBJECTS} subjects.`); sid = uid(); state.subjects.push({ id: sid, color: nextColor(), ...data }); }
+    closeModal(); go('subject', { subjectId: sid }); save(); toast(existing ? `${name} updated` : `${name} added`);
+  },
+  assessment(f) {
+    const obtained = Engine.num(f.obtained.value), max = Engine.num(f.max.value), weight = Engine.num(f.weight.value);
+    if (max == null || max <= 0) return setError('Maximum marks must be greater than 0.');
+    if (obtained == null || obtained < 0) return setError('Enter the marks obtained.');
+    if (obtained > max) return setError('Marks obtained cannot exceed the maximum marks.');
+    if (weight != null && (weight < 0 || weight > 100)) return setError('Weightage must be between 0 and 100.');
+    if (!f.name.value.trim()) return setError('Give the assessment a name.');
+    if (!subjectById(f.subjectId.value)) return setError('Choose a subject.');
+    const data = { subjectId: f.subjectId.value, name: f.name.value.trim(), date: f.date.value || todayISO(), type: f.type.value, obtained, max, weight: weight === 0 ? null : weight, notes: f.notes.value.trim() };
+    const id = f.id.value; const existing = id && state.assessments.find(a => a.id === id);
+    if (existing) Object.assign(existing, data); else state.assessments.push({ id: uid(), ...data });
+    if (f.fromUpcoming.value) state.upcoming = state.upcoming.filter(u => u.id !== f.fromUpcoming.value);
+    const subj = subjectById(data.subjectId);
+    closeModal(); go('subject', { subjectId: data.subjectId }); save();
+    toast(`${data.name} ${f.fromUpcoming.value ? 'recorded' : existing ? 'updated' : 'added'} in ${subj.name}`);
+  },
+  upcoming(f) {
+    const max = Engine.num(f.max.value), weight = Engine.num(f.weight.value), expected = Engine.num(f.expected.value);
+    if (max == null || max <= 0) return setError('Maximum marks must be greater than 0.');
+    if (weight != null && (weight < 0 || weight > 100)) return setError('Weightage must be between 0 and 100.');
+    if (expected != null && (expected < 0 || expected > 100)) return setError('Expected score must be between 0 and 100%.');
+    if (!f.date.value) return setError('Choose a date.');
+    if (!f.name.value.trim()) return setError('Give the test a name.');
+    if (!subjectById(f.subjectId.value)) return setError('Choose a subject.');
+    const data = { subjectId: f.subjectId.value, name: f.name.value.trim(), date: f.date.value, max, weight: weight === 0 ? null : weight, target: f.target.value, expected, notes: f.notes.value.trim() };
+    const id = f.id.value; const existing = id && state.upcoming.find(u => u.id === id);
+    if (existing) Object.assign(existing, data); else state.upcoming.push({ id: uid(), ...data });
+    const subj = subjectById(data.subjectId);
+    closeModal(); go('subject', { subjectId: data.subjectId }); save();
+    toast(`${data.name} ${existing ? 'updated' : 'added'} in ${subj.name}`);
+  },
+  boundaries(f) {
+    const s = subjectById(f.dataset.id); if (!s) return;
+    const grades = readGbEditor(f.querySelector('.gb-editor')); if (!grades || !grades.length) return setError('Add at least one grade with a minimum percentage.');
+    const names = grades.map(g => g.name); if (new Set(names).size !== names.length) return setError('Grade names must be unique.');
+    s.grades = grades; s.target = grades.some(g => g.name === f.target.value) ? f.target.value : grades[0].name;
+    commit(); toast('Grade boundaries saved');
+  },
+  import(f) {
+    const text = $('#import-text').value.trim(); if (!text) return setError('Choose a file or paste the backup text.');
+    let parsed; try { parsed = JSON.parse(text); } catch (e) { return setError('That is not valid backup JSON.'); }
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.subjects)) return setError('This does not look like an A* Planner backup.');
+    const next = normalize(parsed);
+    state = next; ui.view = 'dashboard'; closeModal(); commit({ top: true }); toast(`Imported ${next.subjects.length} subjects, ${next.assessments.length + next.upcoming.length} assessments`);
+  },
+};
+
+/* ---------- Events & init ---------- */
+let lastError = 0;
+function reportError(err) {
+  const msg = (err && err.message) ? err.message : String(err || 'Unknown error');
+  try { console.error(err); } catch (e) { /* no console */ }
+  if (Date.now() - lastError < 1500) return; lastError = Date.now();
+  const box = $('#form-error'); if (box && ui.modal) box.textContent = 'Something went wrong: ' + msg;
+  else if ($('#toast-root')) toast('Something went wrong: ' + msg);
+}
+function runForm(f) {
+  const fn = forms[f.dataset.form]; if (!fn) return;
+  try { fn(f); } catch (err) { reportError(err); }
+}
+function init() {
+  ['modal-root', 'toast-root'].forEach(id => { if (!document.getElementById(id)) { const d = document.createElement('div'); d.id = id; document.body.appendChild(d); } });
+  // Save buttons run by plain click (and Enter in a field), never through native form submission,
+  // which sandboxed previews block silently.
+  document.addEventListener('click', e => {
+    const submit = e.target.closest('button[type="submit"]');
+    if (submit) { const f = submit.closest('form[data-form]'); if (f) { e.preventDefault(); runForm(f); return; } }
+    const el = e.target.closest('[data-action]'); if (!el) return;
+    const fn = actions[el.dataset.action]; if (fn) { try { fn(el, e); } catch (err) { reportError(err); } }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && ui.modal) closeModal();
+    if (e.key === 'Enter' && e.target.matches('[role="button"][data-action]')) e.target.click();
+    if (e.key === 'Enter' && e.target.matches('form[data-form] input') && e.target.type !== 'file') { const f = e.target.closest('form[data-form]'); if (f) { e.preventDefault(); runForm(f); } }
+  });
+  document.addEventListener('submit', e => { const f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault(); runForm(f); });
+  window.addEventListener('error', e => reportError(e.error || e.message));
+  document.addEventListener('change', e => { const el = e.target.closest('[data-change]'); if (!el) return; const fn = changes[el.dataset.change]; if (fn) fn(el, e); });
+  document.addEventListener('input', e => { const el = e.target.closest('[data-live]'); if (!el) return; const fn = lives[el.dataset.live]; if (fn) fn(el, e); });
+  if (window.matchMedia) { try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (state.settings.theme === 'system') render(); }); } catch (e) { /* older browsers */ } }
+  if (typeof storageKey !== 'function') { try { if (!localStorage.getItem(KEY)) localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { storageOK = false; } }
+  render({ top: true });
+  cloudInit();
+}
+init();
+
+</script>
+
+</body>
+</html>
