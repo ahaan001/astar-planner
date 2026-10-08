@@ -1392,7 +1392,11 @@ async function handleAuth(f) {
       const { data, error } = await auth.sb.auth.signUp({ email, password: pw, options: { emailRedirectTo: siteUrl() } });
       if (error) throw error;
       if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) throw new Error('An account with this email already exists. Sign in instead.');
-      if (!data || !data.session) { auth.mode = 'signin'; auth.msg = 'Account created. Check your email for a confirmation link, then sign in.'; render(); }
+      if (!data || !data.session) {
+        // Accounts are confirmed at creation (database trigger), so sign in straight away.
+        const { error: e2 } = await auth.sb.auth.signInWithPassword({ email, password: pw });
+        if (e2) { auth.mode = 'signin'; auth.msg = /not confirmed/i.test(e2.message || '') ? 'Account created. Check your email for a confirmation link, then sign in.' : 'Account created. Sign in to continue.'; render(); }
+      }
     } else if (mode === 'signin') {
       const { error } = await auth.sb.auth.signInWithPassword({ email, password: pw });
       if (error) throw error;

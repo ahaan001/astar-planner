@@ -22,3 +22,24 @@ create policy "planners: delete own" on public.planners for delete using (auth.u
 -- Signed-in users may use the table; anonymous visitors may not.
 revoke all on public.planners from anon;
 grant select, insert, update, delete on public.planners to authenticated;
+
+-- Accounts are usable immediately: mark each new user as confirmed at creation,
+-- so nobody has to click an emailed link before signing in.
+create or replace function public.auto_confirm_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.email_confirmed_at is null then
+    new.email_confirmed_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists auto_confirm_user_on_signup on auth.users;
+create trigger auto_confirm_user_on_signup
+  before insert on auth.users
+  for each row execute function public.auto_confirm_user();
